@@ -47,9 +47,9 @@ else()
     message(STATUS "Found GLM via find_package")
 endif()
 
+file(GLOB SOURCES src/*.cpp)
 add_executable(${PROJECT_NAME} 
-    src/main.cpp
-    src/app.cpp
+    ${SOURCES}
 )
 
 find_program(GLSLC glslc HINTS 
