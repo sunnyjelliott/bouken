@@ -9,9 +9,11 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <typeindex>
 #include <unordered_map>
 #include <vector>
 

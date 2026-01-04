@@ -47,7 +47,7 @@ else()
     message(STATUS "Found GLM via find_package")
 endif()
 
-file(GLOB SOURCES src/*.cpp)
+file(GLOB SOURCES src/*)
 add_executable(${PROJECT_NAME} 
     ${SOURCES}
 )

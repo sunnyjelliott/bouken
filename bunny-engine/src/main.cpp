@@ -1,5 +1,7 @@
 #include "app.h"
 #include "pch.h"
+#include "view.h"
+#include "world.h"
 
 int main() {
 	Application app;
