@@ -65,12 +65,11 @@ endif()
 set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(SHADER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 
-
 file(MAKE_DIRECTORY ${SHADER_BINARY_DIR})
 
 set(SHADERS
-    ${SHADER_SOURCE_DIR}/triangle.vert
-    ${SHADER_SOURCE_DIR}/triangle.frag
+    ${SHADER_SOURCE_DIR}/shader.vert
+    ${SHADER_SOURCE_DIR}/shader.frag
 )
 
 foreach(SHADER ${SHADERS})

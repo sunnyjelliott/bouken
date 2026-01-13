@@ -1,5 +1,7 @@
 #include "rendersystem.h"
 
+#include "world.h"
+
 static std::vector<char> readFile(const std::string& filename) {
 	std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -19,10 +21,12 @@ static std::vector<char> readFile(const std::string& filename) {
 
 void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain) {
 	m_context = &context;
+	m_swapChainFormat = swapChain.getImageFormat();
 
 	createRenderPass();
 	createGraphicsPipeline();
 	swapChain.createFramebuffers(m_renderPass);
+	createVertexBuffer();
 	createCommandBuffer();
 	createSyncObjects();
 }
@@ -34,12 +38,16 @@ void RenderSystem::cleanup() {
 	                   nullptr);
 	vkDestroyFence(m_context->getDevice(), m_inFlightFence, nullptr);
 
+	vkDestroyBuffer(m_context->getDevice(), m_vertexBuffer, nullptr);
+	vkFreeMemory(m_context->getDevice(), m_vertexBufferMemory, nullptr);
+
 	vkDestroyPipeline(m_context->getDevice(), m_graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(m_context->getDevice(), m_pipelineLayout, nullptr);
 	vkDestroyRenderPass(m_context->getDevice(), m_renderPass, nullptr);
 }
 
-void RenderSystem::drawFrame(SwapChain& swapChain) {
+void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
+                             const Camera& camera) {
 	vkWaitForFences(m_context->getDevice(), 1, &m_inFlightFence, VK_TRUE,
 	                UINT64_MAX);
 	vkResetFences(m_context->getDevice(), 1, &m_inFlightFence);
@@ -50,7 +58,7 @@ void RenderSystem::drawFrame(SwapChain& swapChain) {
 	                      &imageIndex);
 
 	vkResetCommandBuffer(m_commandBuffer, 0);
-	recordCommandBuffer(m_commandBuffer, imageIndex, swapChain);
+	recordCommandBuffer(m_commandBuffer, imageIndex, swapChain, world, camera);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -139,8 +147,8 @@ void RenderSystem::createRenderPass() {
 }
 
 void RenderSystem::createGraphicsPipeline() {
-	auto vertShaderCode = readFile("shaders/triangle_vert.spv");
-	auto fragShaderCode = readFile("shaders/triangle_frag.spv");
+	auto vertShaderCode = readFile("shaders/shader_vert.spv");
+	auto fragShaderCode = readFile("shaders/shader_frag.spv");
 
 	VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
 	VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -162,12 +170,17 @@ void RenderSystem::createGraphicsPipeline() {
 	VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
 	                                                  fragShaderStageInfo};
 
+	auto bindingDescription = Vertex::getBindingDescription();
+	auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType =
 	    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputInfo.vertexBindingDescriptionCount = 0;
-	vertexInputInfo.vertexAttributeDescriptionCount = 0;
-	// TODO: Add vertex input descriptors when loading meshes
+	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputInfo.vertexAttributeDescriptionCount =
+	    static_cast<uint32_t>(attributeDescriptions.size());
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 	inputAssembly.sType =
@@ -189,7 +202,7 @@ void RenderSystem::createGraphicsPipeline() {
 	// TODO: Add wireframe pipeline variant
 	rasterizer.lineWidth = 1.0f;
 	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizer.depthBiasEnable = VK_FALSE;
 
 	VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -223,12 +236,18 @@ void RenderSystem::createGraphicsPipeline() {
 	    static_cast<uint32_t>(dynamicStates.size());
 	dynamicState.pDynamicStates = dynamicStates.data();
 
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size =
+	    sizeof(glm::mat4) + sizeof(glm::mat4) + sizeof(glm::mat4);
+
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = 0;
-	pipelineLayoutInfo.pushConstantRangeCount = 0;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 	// TODO: Add descriptor set layouts for uniforms/textures
-	// TODO: Add push constants for model matrices
 
 	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_pipelineLayout) != VK_SUCCESS) {
@@ -294,7 +313,8 @@ void RenderSystem::createSyncObjects() {
 
 void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                        uint32_t imageIndex,
-                                       SwapChain& swapChain) {
+                                       SwapChain& swapChain, World& world,
+                                       const Camera& camera) {
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -309,7 +329,7 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 	renderPassInfo.renderArea.offset = {0, 0};
 	renderPassInfo.renderArea.extent = swapChain.getExtent();
 
-	VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+	VkClearValue clearColor = {{{0.1f, 0.1f, 0.1f, 1.0f}}};
 	renderPassInfo.clearValueCount = 1;
 	renderPassInfo.pClearValues = &clearColor;
 
@@ -332,7 +352,50 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 	scissor.extent = swapChain.getExtent();
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+	VkBuffer vertexBuffers[] = {m_vertexBuffer};
+	VkDeviceSize offsets[] = {0};
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+	float aspectRatio =
+	    swapChain.getExtent().width / (float)swapChain.getExtent().height;
+	glm::mat4 view = camera.getViewMatrix();
+	glm::mat4 projection = camera.getProjectionMatrix(aspectRatio);
+
+	for (Entity entity : world.view<Transform, MeshRenderer>()) {
+		Transform& transform = world.getComponent<Transform>(entity);
+		MeshRenderer& meshRenderer = world.getComponent<MeshRenderer>(entity);
+
+		if (!meshRenderer.visible) continue;
+
+		auto it = m_meshes.find(meshRenderer.meshID);
+		if (it == m_meshes.end()) continue;
+
+		const MeshInfo& meshInfo = it->second;
+
+		// Create model matrix from transform
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, transform.position);
+		model = model * glm::mat4_cast(transform.rotation);
+		model = glm::scale(model, transform.scale);
+
+		struct {
+			glm::mat4 model;
+			glm::mat4 view;
+			glm::mat4 projection;
+		} pushConstants;
+
+		pushConstants.model = model;
+		pushConstants.view = view;
+		pushConstants.projection = projection;
+
+		vkCmdPushConstants(commandBuffer, m_pipelineLayout,
+		                   VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pushConstants),
+		                   &pushConstants);
+
+		// Draw the mesh (for now, always the cube)
+		vkCmdDraw(commandBuffer, meshInfo.vertexCount, 1, meshInfo.firstVertex,
+		          0);
+	}
 
 	vkCmdEndRenderPass(commandBuffer);
 
@@ -354,4 +417,161 @@ VkShaderModule RenderSystem::createShaderModule(const std::vector<char>& code) {
 	}
 
 	return shaderModule;
+}
+
+std::vector<Vertex> RenderSystem::createCubeVertices() {
+	return {
+	    // Front face (red)
+	    {{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{-0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+
+	    // Back face (green)
+	    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+
+	    // Top face (blue)
+	    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+
+	    // Bottom face (yellow)
+	    {{-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{0.5f, -0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{0.5f, -0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{-0.5f, -0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}},
+
+	    // Right face (magenta)
+	    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 1.0f}},
+	    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}},
+	    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}},
+	    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 1.0f}},
+
+	    // Left face (cyan)
+	    {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}},
+	    {{-0.5f, -0.5f, 0.5f}, {0.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 1.0f}},
+	    {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}},
+	};
+}
+
+std::vector<Vertex> RenderSystem::createPyramidVertices() {
+	return {
+	    // Base (white)
+	    {{-0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+
+	    // Front (red)
+	    {{-0.5f, 0.0f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{0.5f, 0.0f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+	    {{0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+
+	    // Right (green)
+	    {{0.5f, 0.0f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	    {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+
+	    // Back (blue)
+	    {{0.5f, 0.0f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	    {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+
+	    // Left (yellow)
+	    {{-0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{-0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 0.0f}},
+	    {{0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}},
+	};
+}
+
+uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
+                        VkMemoryPropertyFlags properties) {
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) &&
+		    (memProperties.memoryTypes[i].propertyFlags & properties) ==
+		        properties) {
+			return i;
+		}
+	}
+
+	throw std::runtime_error("Failed to find suitable memory type!");
+}
+
+void RenderSystem::createVertexBuffer() {
+	std::vector<Vertex> allVertices;
+
+	// Mesh 0: Cube
+	auto cubeVerts = createCubeVertices();
+	m_meshes[0] = {.firstVertex = static_cast<uint32_t>(allVertices.size()),
+	               .vertexCount = static_cast<uint32_t>(cubeVerts.size())};
+	allVertices.insert(allVertices.end(), cubeVerts.begin(), cubeVerts.end());
+
+	// Mesh 1: Pyramid
+	auto pyramidVerts = createPyramidVertices();
+	m_meshes[1] = {.firstVertex = static_cast<uint32_t>(allVertices.size()),
+	               .vertexCount = static_cast<uint32_t>(pyramidVerts.size())};
+	allVertices.insert(allVertices.end(), pyramidVerts.begin(),
+	                   pyramidVerts.end());
+
+	VkDeviceSize bufferSize = sizeof(Vertex) * allVertices.size();
+
+	// Create vertex buffer
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = bufferSize;
+	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(m_context->getDevice(), &bufferInfo, nullptr,
+	                   &m_vertexBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create vertex buffer!");
+	}
+
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(m_context->getDevice(), m_vertexBuffer,
+	                              &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(
+	    m_context->getPhysicalDevice(), memRequirements.memoryTypeBits,
+	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+	        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	if (vkAllocateMemory(m_context->getDevice(), &allocInfo, nullptr,
+	                     &m_vertexBufferMemory) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate vertex buffer memory!");
+	}
+
+	vkBindBufferMemory(m_context->getDevice(), m_vertexBuffer,
+	                   m_vertexBufferMemory, 0);
+
+	void* data;
+	vkMapMemory(m_context->getDevice(), m_vertexBufferMemory, 0, bufferSize, 0,
+	            &data);
+	memcpy(data, allVertices.data(), (size_t)bufferSize);
+	vkUnmapMemory(m_context->getDevice(), m_vertexBufferMemory);
 }

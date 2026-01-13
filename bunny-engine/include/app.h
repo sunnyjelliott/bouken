@@ -3,6 +3,7 @@
 #include "rendersystem.h"
 #include "swapchain.h"
 #include "vulkancontext.h"
+#include "world.h"
 
 class Application {
    public:
@@ -11,6 +12,7 @@ class Application {
    private:
 	void initWindow();
 	void initVulkan();
+	void initScene();
 	void mainLoop();
 	void cleanup();
 
@@ -21,4 +23,6 @@ class Application {
 	VulkanContext m_context;
 	SwapChain m_swapChain;
 	RenderSystem m_renderSystem;
+	World m_world;
+	Camera m_camera;
 };

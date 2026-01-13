@@ -3,7 +3,9 @@
 #include "entity.h"
 #include "entitymanager.h"
 #include "icomponentpool.h"
+#include "meshrenderer.h"
 #include "pch.h"
+#include "transform.h"
 
 template <typename... Components>
 class View;
