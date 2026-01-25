@@ -1,0 +1,9 @@
+build/
+.vscode/
+vcpkg/
+.clang-format
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.spv
