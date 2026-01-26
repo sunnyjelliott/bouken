@@ -487,7 +487,6 @@ void RenderSystem::createSyncObjects() {
 
 void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
                                   const std::vector<uint32_t>& indices) {
-	// Clean up old buffers if they exist
 	if (m_vertexBuffer != VK_NULL_HANDLE) {
 		vmaDestroyBuffer(m_context->getAllocator(), m_vertexBuffer,
 		                 m_vertexBufferAllocation);
@@ -497,57 +496,138 @@ void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
 		                 m_indexBufferAllocation);
 	}
 
-	// Create vertex buffer
 	VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
+	VkDeviceSize indexBufferSize = sizeof(uint32_t) * indices.size();
 
+	// === VERTEX BUFFER ===
+
+	// Create staging buffer (CPU-visible)
+	VkBuffer vertexStagingBuffer;
+	VmaAllocation vertexStagingAllocation;
+
+	VkBufferCreateInfo vertexStagingInfo{};
+	vertexStagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vertexStagingInfo.size = vertexBufferSize;
+	vertexStagingInfo.usage =
+	    VK_BUFFER_USAGE_TRANSFER_SRC_BIT;  // Source for transfer
+	vertexStagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo vertexStagingAllocInfo{};
+	vertexStagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	vertexStagingAllocInfo.flags =
+	    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+	    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	VmaAllocationInfo vertexStagingAllocResult;
+	if (vmaCreateBuffer(m_context->getAllocator(), &vertexStagingInfo,
+	                    &vertexStagingAllocInfo, &vertexStagingBuffer,
+	                    &vertexStagingAllocation,
+	                    &vertexStagingAllocResult) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create vertex staging buffer!");
+	}
+
+	// Copy data to staging buffer
+	memcpy(vertexStagingAllocResult.pMappedData, vertices.data(),
+	       (size_t)vertexBufferSize);
+
+	// Create device-local buffer (GPU-only, fast)
 	VkBufferCreateInfo vertexBufferInfo{};
 	vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	vertexBufferInfo.size = vertexBufferSize;
-	vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vertexBufferInfo.usage =
+	    VK_BUFFER_USAGE_TRANSFER_DST_BIT |  // Destination for transfer
+	    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;  // Will be used as vertex buffer
 	vertexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo vertexAllocInfo{};
 	vertexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	vertexAllocInfo.flags =
+	vertexAllocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+	if (vmaCreateBuffer(m_context->getAllocator(), &vertexBufferInfo,
+	                    &vertexAllocInfo, &m_vertexBuffer,
+	                    &m_vertexBufferAllocation, nullptr) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create vertex buffer!");
+	}
+
+	// Copy from staging to device buffer
+	VkCommandBuffer commandBuffer = m_context->beginSingleTimeCommands();
+
+	VkBufferCopy vertexCopyRegion{};
+	vertexCopyRegion.srcOffset = 0;
+	vertexCopyRegion.dstOffset = 0;
+	vertexCopyRegion.size = vertexBufferSize;
+	vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer, m_vertexBuffer, 1,
+	                &vertexCopyRegion);
+
+	m_context->endSingleTimeCommands(commandBuffer);
+
+	// Clean up staging buffer
+	vmaDestroyBuffer(m_context->getAllocator(), vertexStagingBuffer,
+	                 vertexStagingAllocation);
+
+	// === INDEX BUFFER ===
+
+	// Create staging buffer
+	VkBuffer indexStagingBuffer;
+	VmaAllocation indexStagingAllocation;
+
+	VkBufferCreateInfo indexStagingInfo{};
+	indexStagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	indexStagingInfo.size = indexBufferSize;
+	indexStagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	indexStagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo indexStagingAllocInfo{};
+	indexStagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	indexStagingAllocInfo.flags =
 	    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
 	    VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-	VmaAllocationInfo vertexAllocInfoResult;
-	if (vmaCreateBuffer(m_context->getAllocator(), &vertexBufferInfo,
-	                    &vertexAllocInfo, &m_vertexBuffer,
-	                    &m_vertexBufferAllocation,
-	                    &vertexAllocInfoResult) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create vertex buffer with VMA!");
+	VmaAllocationInfo indexStagingAllocResult;
+	if (vmaCreateBuffer(m_context->getAllocator(), &indexStagingInfo,
+	                    &indexStagingAllocInfo, &indexStagingBuffer,
+	                    &indexStagingAllocation,
+	                    &indexStagingAllocResult) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create index staging buffer!");
 	}
 
-	memcpy(vertexAllocInfoResult.pMappedData, vertices.data(),
-	       (size_t)vertexBufferSize);
+	// Copy data to staging buffer
+	memcpy(indexStagingAllocResult.pMappedData, indices.data(),
+	       (size_t)indexBufferSize);
 
-	// Create index buffer
-	VkDeviceSize indexBufferSize = sizeof(uint32_t) * indices.size();
-
+	// Create device-local buffer
 	VkBufferCreateInfo indexBufferInfo{};
 	indexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	indexBufferInfo.size = indexBufferSize;
-	indexBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	indexBufferInfo.usage =
+	    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	indexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo indexAllocInfo{};
 	indexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	indexAllocInfo.flags =
-	    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-	    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	indexAllocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 
-	VmaAllocationInfo indexAllocInfoResult;
 	if (vmaCreateBuffer(m_context->getAllocator(), &indexBufferInfo,
 	                    &indexAllocInfo, &m_indexBuffer,
-	                    &m_indexBufferAllocation,
-	                    &indexAllocInfoResult) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create index buffer with VMA!");
+	                    &m_indexBufferAllocation, nullptr) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create index buffer!");
 	}
 
-	memcpy(indexAllocInfoResult.pMappedData, indices.data(),
-	       (size_t)indexBufferSize);
+	// Copy from staging to device buffer
+	commandBuffer = m_context->beginSingleTimeCommands();
+
+	VkBufferCopy indexCopyRegion{};
+	indexCopyRegion.srcOffset = 0;
+	indexCopyRegion.dstOffset = 0;
+	indexCopyRegion.size = indexBufferSize;
+	vkCmdCopyBuffer(commandBuffer, indexStagingBuffer, m_indexBuffer, 1,
+	                &indexCopyRegion);
+
+	m_context->endSingleTimeCommands(commandBuffer);
+
+	// Clean up staging buffer
+	vmaDestroyBuffer(m_context->getAllocator(), indexStagingBuffer,
+	                 indexStagingAllocation);
 }
 
 void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,

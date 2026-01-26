@@ -38,6 +38,9 @@ class VulkanContext {
 	}
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 
+	VkCommandBuffer beginSingleTimeCommands();
+	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
    private:
 	// Initialization functions
 	void createInstance();
