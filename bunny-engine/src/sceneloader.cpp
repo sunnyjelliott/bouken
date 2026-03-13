@@ -1,6 +1,9 @@
 #include "sceneloader.h"
 
+#include <chrono>
+
 bool SceneLoader::loadScene(const std::string& filepath, World& world,
+                            RenderSystem& renderSystem,
                             const SceneLoadOptions& options) {
 	SceneFormat format = options.format;
 	if (format == SceneFormat::AUTO) {
@@ -9,9 +12,9 @@ bool SceneLoader::loadScene(const std::string& filepath, World& world,
 
 	switch (format) {
 		case SceneFormat::USD:
-			return loadUSD(filepath, world, options);
+			return loadUSD(filepath, world, renderSystem, options);
 		case SceneFormat::OBJ:
-			return loadOBJ(filepath, world, options);
+			return loadOBJ(filepath, world, renderSystem, options);
 		default:
 			std::cerr << "Unsupported scene file format" << filepath
 			          << std::endl;
@@ -42,18 +45,24 @@ SceneFormat SceneLoader::detectFormat(const std::string& filepath) {
 }
 
 bool SceneLoader::loadUSD(const std::string& filepath, World& world,
+                          RenderSystem& renderSystem,
                           const SceneLoadOptions& options) {
 	std::cout << "Loading USD scene: " << filepath << std::endl;
 
 	std::filesystem::path absolutepath = std::filesystem::absolute(filepath);
 
 	// Open USD stage
+	auto stageStart = std::chrono::high_resolution_clock::now();
 	UsdStageRefPtr stage = UsdStage::Open(absolutepath.generic_string());
 	if (!stage) {
 		std::cerr << "Failed to open USD stage: " << filepath << std::endl;
 		return false;
 	}
-	std::cout << "Stage opened" << std::endl;
+	auto stageEnd = std::chrono::high_resolution_clock::now();
+	auto stageDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+	    stageEnd - stageStart);
+	std::cout << "Stage open took: " << stageDuration.count() << "ms"
+	          << std::endl;
 
 	// Get root prim
 	UsdPrim rootPrim = stage->GetPseudoRoot();
@@ -61,7 +70,6 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 		std::cerr << "USD stage has no root prim" << std::endl;
 		return false;
 	}
-	std::cout << "Root prim valid" << std::endl;
 
 	// Check if root has children
 	auto children = rootPrim.GetChildren();
@@ -69,14 +77,12 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 		std::cout << "Root prim has no children" << std::endl;
 		return true;  // Not an error, just empty
 	}
-	std::cout << "Root has children" << std::endl;
 
 	// Traverse the scene hierarchy
 	int entityCount = 0;
 	for (const UsdPrim& child : children) {
-		std::cout << "Processing child: " << child.GetPath().GetString()
-		          << std::endl;
-		Entity entity = traverseUsdPrim(child, world, options.parentEntity);
+		Entity entity =
+		    traverseUsdPrim(child, world, renderSystem, options.parentEntity);
 		if (entity != NULL_ENTITY) {
 			entityCount++;
 		}
@@ -88,6 +94,7 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 }
 
 bool SceneLoader::loadOBJ(const std::string& filepath, World& world,
+                          RenderSystem& renderSystem,
                           const SceneLoadOptions& options) {
 	std::cout << "Loading OBJ: " << filepath << std::endl;
 
@@ -96,13 +103,18 @@ bool SceneLoader::loadOBJ(const std::string& filepath, World& world,
 }
 
 Entity SceneLoader::traverseUsdPrim(const UsdPrim& prim, World& world,
-                                    Entity parent) {
+                                    RenderSystem& renderSystem, Entity parent) {
 	if (!prim.IsActive()) {
 		return NULL_ENTITY;
 	}
 
-	std::cout << "Traversing prim: " << prim.GetPath().GetString()
-	          << " (type: " << prim.GetTypeName() << ")" << std::endl;
+	if (!prim.IsA<UsdGeomImageable>()) {
+		for (const UsdPrim& child : prim.GetChildren()) {
+			traverseUsdPrim(child, world, renderSystem, parent);
+		}
+
+		return NULL_ENTITY;
+	}
 
 	Entity entity = world.createEntity();
 
@@ -115,8 +127,7 @@ Entity SceneLoader::traverseUsdPrim(const UsdPrim& prim, World& world,
 	}
 
 	if (isUsdGeometry(prim)) {
-		std::cout << "  -> Geometry prim detected" << std::endl;
-		uint32_t meshID = createMeshFromUsdGeom(prim);
+		uint32_t meshID = createMeshFromUsdGeom(prim, renderSystem);
 
 		MeshRenderer renderer;
 		renderer.meshID = meshID;
@@ -126,7 +137,7 @@ Entity SceneLoader::traverseUsdPrim(const UsdPrim& prim, World& world,
 	}
 
 	for (const UsdPrim& child : prim.GetChildren()) {
-		traverseUsdPrim(child, world, entity);
+		traverseUsdPrim(child, world, renderSystem, entity);
 	}
 
 	return entity;
@@ -177,54 +188,103 @@ bool SceneLoader::isUsdGeometry(const UsdPrim& prim) {
 	       prim.IsA<UsdGeomCylinder>();
 }
 
-uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim) {
+uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
+                                            RenderSystem& renderSystem) {
 	// Handle explicit mesh data
 	if (prim.IsA<UsdGeomMesh>()) {
 		UsdGeomMesh mesh(prim);
 
 		// Get vertex positions
-		UsdAttribute pointsAttr = mesh.GetPointsAttr();
 		VtArray<GfVec3f> points;
-		pointsAttr.Get(&points);
+		mesh.GetPointsAttr().Get(&points);
+
+		// Get normals (if they exist)
+		VtArray<GfVec3f> normals;
+		UsdAttribute normalsAttr = mesh.GetNormalsAttr();
+		if (normalsAttr.HasValue()) {
+			normalsAttr.Get(&normals);
+		}
 
 		// Get face vertex indices
-		UsdAttribute faceVertexIndicesAttr = mesh.GetFaceVertexIndicesAttr();
 		VtArray<int> faceVertexIndices;
-		faceVertexIndicesAttr.Get(&faceVertexIndices);
+		mesh.GetFaceVertexIndicesAttr().Get(&faceVertexIndices);
 
 		// Get face vertex counts
-		UsdAttribute faceVertexCountsAttr = mesh.GetFaceVertexCountsAttr();
 		VtArray<int> faceVertexCounts;
-		faceVertexCountsAttr.Get(&faceVertexCounts);
+		mesh.GetFaceVertexCountsAttr().Get(&faceVertexCounts);
 
-		std::cout << "  USD Mesh: " << points.size() << " points, "
-		          << faceVertexCounts.size() << " faces" << std::endl;
+		std::vector<Vertex> vertices;
+		std::vector<uint32_t> indices;
 
-		// TODO: Triangulate and upload mesh
-		// For now, return 0 (cube) as placeholder
-		return 0;
+		// Convert points to vertices
+		for (size_t i = 0; i < points.size(); i++) {
+			Vertex v;
+			v.position = glm::vec3(points[i][0], points[i][1], points[i][2]);
+
+			// Use USD normals if available, otherwise compute later
+			if (i < normals.size()) {
+				v.normal =
+				    glm::vec3(normals[i][0], normals[i][1], normals[i][2]);
+			} else {
+				v.normal = glm::vec3(0.0f, 1.0f, 0.0f);  // Placeholder
+			}
+
+			v.color = glm::vec3(0.7f, 0.7f, 0.7f);
+			vertices.push_back(v);
+		}
+
+		// Triangulate faces
+		uint32_t indexOffset = 0;
+		for (int faceVertexCount : faceVertexCounts) {
+			if (faceVertexCount == 3) {
+				// Already a triangle
+				indices.push_back(faceVertexIndices[indexOffset + 0]);
+				indices.push_back(faceVertexIndices[indexOffset + 1]);
+				indices.push_back(faceVertexIndices[indexOffset + 2]);
+			} else if (faceVertexCount == 4) {
+				// Quad - split into two triangles
+				indices.push_back(faceVertexIndices[indexOffset + 0]);
+				indices.push_back(faceVertexIndices[indexOffset + 1]);
+				indices.push_back(faceVertexIndices[indexOffset + 2]);
+
+				indices.push_back(faceVertexIndices[indexOffset + 0]);
+				indices.push_back(faceVertexIndices[indexOffset + 2]);
+				indices.push_back(faceVertexIndices[indexOffset + 3]);
+			} else {
+				// N-gon - fan triangulation from first vertex
+				for (int i = 1; i < faceVertexCount - 1; i++) {
+					indices.push_back(faceVertexIndices[indexOffset + 0]);
+					indices.push_back(faceVertexIndices[indexOffset + i]);
+					indices.push_back(faceVertexIndices[indexOffset + i + 1]);
+				}
+			}
+			indexOffset += faceVertexCount;
+		}
+
+		// If USD didn't have normals, compute them from triangles
+		if (normals.empty()) {
+			// TODO: Compute per-vertex normals from face normals
+			// For now, just leave placeholder normals
+		}
+
+		// Upload to GPU
+		return renderSystem.uploadMesh(vertices, indices);
 	}
 
 	// Handle schema primitives - map to hardcoded meshes
 	if (prim.IsA<UsdGeomCube>()) {
-		std::cout << "  -> Mapping to hardcoded Cube mesh (ID: 0)" << std::endl;
 		return 0;  // Cube mesh
 	}
 
 	if (prim.IsA<UsdGeomSphere>()) {
-		std::cout << "  -> Mapping to hardcoded Sphere mesh (ID: 1)"
-		          << std::endl;
 		return 1;  // Sphere mesh
 	}
 
 	if (prim.IsA<UsdGeomCone>()) {
-		std::cout << "  -> Mapping to hardcoded Cone/Pyramid mesh (ID: 1)"
-		          << std::endl;
 		return 2;  // Cone mesh
 	}
 
 	if (prim.IsA<UsdGeomCylinder>()) {
-		std::cout << "  -> Cylinder not yet supported" << std::endl;
 		return 0;  // Fallback to cube
 	}
 

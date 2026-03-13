@@ -141,6 +141,32 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 	vkQueuePresentKHR(m_context->getPresentQueue(), &presentInfo);
 }
 
+uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
+                                  const std::vector<uint32_t>& indices) {
+	if (vertices.empty() || indices.empty()) {
+		std::cerr << "Cannot upload empty mesh" << std::endl;
+		return 0;  // Return default cube
+	}
+
+	uint32_t meshID = m_nextMeshID++;
+
+	// Store mesh metadata
+	m_meshes[meshID] = {
+	    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
+	    .vertexCount = static_cast<uint32_t>(vertices.size()),
+	    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
+	    .indexCount = static_cast<uint32_t>(indices.size())};
+
+	// Append to global vertex/index arrays
+	m_allVertices.insert(m_allVertices.end(), vertices.begin(), vertices.end());
+	m_allIndices.insert(m_allIndices.end(), indices.begin(), indices.end());
+
+	// Re-upload all mesh data to GPU
+	uploadMeshData(m_allVertices, m_allIndices);
+
+	return meshID;
+}
+
 void RenderSystem::createRenderPass() {
 	// Color attachment
 	VkAttachmentDescription colorAttachment{};

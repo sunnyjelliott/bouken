@@ -72,29 +72,36 @@ void Application::initScene() {
 
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
-	// Get absolute path properly
-	std::filesystem::path scenePath =
-	    std::filesystem::current_path() / "assets\\models\\test_scene.usda";
-	std::cout << "Current directory: " << std::filesystem::current_path()
-	          << std::endl;
-	std::cout << "Scene path: " << scenePath << std::endl;
-	std::cout << "File exists: " << std::filesystem::exists(scenePath)
-	          << std::endl;
+	std::filesystem::path scenePath = std::filesystem::current_path() /
+	                                  "assets" / "models" / "main_sponza" /
+	                                  "sponza.usdc";
 
-	if (!std::filesystem::exists(scenePath)) {
-		std::cerr << "ERROR: test_scene.usda not found!" << std::endl;
-		return;
+	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem);
+
+	std::cout << "=== Entity Count ===" << std::endl;
+	std::cout << "Total entities: " << m_world.getEntityCount() << std::endl;
+
+	int transformCount = 0;
+	int meshRendererCount = 0;
+
+	for (Entity e : m_world.view<Transform>()) {
+		transformCount++;
 	}
 
-	// Load USD test scene
-	SceneLoader::loadScene(scenePath.string(), m_world);
+	for (Entity e : m_world.view<MeshRenderer>()) {
+		meshRendererCount++;
+	}
 
-	std::cout << "Total entities: " << m_world.getEntityCount() << std::endl;
+	std::cout << "Entities with Transform: " << transformCount << std::endl;
+	std::cout << "Entities with MeshRenderer: " << meshRendererCount
+	          << std::endl;
+	std::cout << "===================" << std::endl;
 }
 
 void Application::mainLoop() {
 	Entity parent = 0;  // First entity created
 	float rotation = 0.0f;
+	std::cout << "main loop entered." << std::endl;
 
 	while (!glfwWindowShouldClose(m_window)) {
 		float currentTime = static_cast<float>(glfwGetTime());

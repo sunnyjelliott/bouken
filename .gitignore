@@ -4,8 +4,11 @@ build/
 compile_commands.json
 vcpkg/
 .clang-format
+.cache/
+.clangd
 *.exe
 *.obj
 *.pdb
 *.ilk
 *.spv
+bunny-engine/assets/models/

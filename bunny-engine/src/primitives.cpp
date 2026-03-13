@@ -4,61 +4,87 @@ PrimitiveGeometry Primitives::createCube(float size) {
 	PrimitiveGeometry geom;
 	float half = size * 0.5f;
 
-	// 8 unique vertices
 	geom.vertices = {
-	    {{-half, -half, -half}, {0.0f, 1.0f, 1.0f}},  // 0: back-bottom-left
-	    {{half, -half, -half}, {0.0f, 1.0f, 0.0f}},   // 1: back-bottom-right
-	    {{half, half, -half}, {0.0f, 0.0f, 1.0f}},    // 2: back-top-right
-	    {{-half, half, -half}, {0.0f, 1.0f, 0.0f}},   // 3: back-top-left
-	    {{-half, -half, half}, {1.0f, 0.0f, 0.0f}},   // 4: front-bottom-left
-	    {{half, -half, half}, {1.0f, 0.0f, 0.0f}},    // 5: front-bottom-right
-	    {{half, half, half}, {1.0f, 0.0f, 1.0f}},     // 6: front-top-right
-	    {{-half, half, half}, {0.0f, 0.0f, 1.0f}},    // 7: front-top-left
+	    // Front face (normal: +Z)
+	    {{-half, -half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+	    {{half, -half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+	    {{half, half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+	    {{-half, half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+
+	    // Back face (normal: -Z)
+	    {{half, -half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{-half, -half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{-half, half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{half, half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+
+	    // Top face (normal: +Y)
+	    {{-half, half, half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{half, half, half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{half, half, -half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{-half, half, -half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+
+	    // Bottom face (normal: -Y)
+	    {{-half, -half, -half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{half, -half, -half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{half, -half, half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+	    {{-half, -half, half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+
+	    // Right face (normal: +X)
+	    {{half, -half, half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
+	    {{half, -half, -half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
+	    {{half, half, -half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
+	    {{half, half, half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
+
+	    // Left face (normal: -X)
+	    {{-half, -half, -half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{-half, -half, half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{-half, half, half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    {{-half, half, -half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
 	};
 
 	geom.indices = {
-	    // Front face
+	    // Front
+	    0,
+	    1,
+	    2,
+	    0,
+	    2,
+	    3,
+	    // Back
 	    4,
 	    5,
 	    6,
 	    4,
 	    6,
 	    7,
-	    // Back face
-	    1,
-	    0,
-	    3,
-	    1,
-	    3,
-	    2,
-	    // Top face
-	    7,
-	    6,
-	    2,
-	    7,
-	    2,
-	    3,
-	    // Bottom face
-	    0,
-	    1,
-	    5,
-	    0,
-	    5,
-	    4,
-	    // Right face
-	    5,
-	    1,
-	    2,
-	    5,
-	    2,
-	    6,
-	    // Left face
-	    0,
-	    4,
-	    7,
-	    0,
-	    7,
-	    3,
+	    // Top
+	    8,
+	    9,
+	    10,
+	    8,
+	    10,
+	    11,
+	    // Bottom
+	    12,
+	    13,
+	    14,
+	    12,
+	    14,
+	    15,
+	    // Right
+	    16,
+	    17,
+	    18,
+	    16,
+	    18,
+	    19,
+	    // Left
+	    20,
+	    21,
+	    22,
+	    20,
+	    22,
+	    23,
 	};
 
 	return geom;
@@ -81,6 +107,7 @@ PrimitiveGeometry Primitives::createSphere(float radius, int rings,
 
 			Vertex v;
 			v.position = glm::vec3(x, y, z);
+			v.normal = glm::normalize(v.position);
 			// Color based on height (gradient from bottom to top)
 			float t = (y + radius) / (2.0f * radius);
 			v.color = glm::vec3(t, 0.5f, 1.0f - t);
@@ -113,33 +140,46 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 	PrimitiveGeometry geom;
 	float halfHeight = height * 0.5f;
 
-	// Apex vertex
-	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {1.0f, 1.0f, 0.0f}});
+	// --- Side face vertices ---
 
-	// Base center vertex
-	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {1.0f, 1.0f, 1.0f}});
+	// Apex (index 0)
+	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 
-	// Base circle vertices
+	// Base ring for sides (indices 1..segments+1)
+	// Outward-perpendicular to the lateral surface: normalize(height*cos, radius, height*sin)
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-
-		geom.vertices.push_back({{x, -halfHeight, z}, {1.0f, 1.0f, 1.0f}});
+		glm::vec3 sideNormal = glm::normalize(glm::vec3(height * cos(theta), radius, height * sin(theta)));
+		geom.vertices.push_back({{x, -halfHeight, z}, sideNormal, {1.0f, 1.0f, 1.0f}});
 	}
 
 	// Side triangles (apex to base edge)
 	for (int i = 0; i < segments; i++) {
 		geom.indices.push_back(0);          // Apex
-		geom.indices.push_back(2 + i);      // Base edge
-		geom.indices.push_back(2 + i + 1);  // Next base edge
+		geom.indices.push_back(1 + i);      // Base edge
+		geom.indices.push_back(1 + i + 1);  // Next base edge
 	}
 
-	// Base triangles (base center to base edge)
+	// --- Base cap vertices ---
+
+	uint32_t baseCenterIdx = static_cast<uint32_t>(geom.vertices.size());
+	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}});
+
+	uint32_t baseRingStart = static_cast<uint32_t>(geom.vertices.size());
+	for (int i = 0; i <= segments; i++) {
+		float theta = 2.0f * glm::pi<float>() * i / segments;
+		float x = radius * cos(theta);
+		float z = radius * sin(theta);
+		geom.vertices.push_back({{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}});
+	}
+
+	// Base triangles (base center to base edge, reversed winding)
 	for (int i = 0; i < segments; i++) {
-		geom.indices.push_back(1);          // Base center
-		geom.indices.push_back(2 + i + 1);  // Base edge (reversed winding)
-		geom.indices.push_back(2 + i);
+		geom.indices.push_back(baseCenterIdx);
+		geom.indices.push_back(baseRingStart + i + 1);
+		geom.indices.push_back(baseRingStart + i);
 	}
 
 	return geom;
@@ -150,45 +190,70 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 	PrimitiveGeometry geom;
 	float halfHeight = height * 0.5f;
 
-	// Top center
-	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {0.5f, 1.0f, 0.5f}});
-	// Bottom center
-	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {0.5f, 0.0f, 0.5f}});
+	// --- Top cap (normal: +Y) ---
 
-	// Generate top and bottom rings
+	uint32_t topCenter = static_cast<uint32_t>(geom.vertices.size());
+	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}});
+
+	uint32_t topCapRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-
-		// Top ring
-		geom.vertices.push_back({{x, halfHeight, z}, {0.5f, 1.0f, 0.5f}});
-		// Bottom ring
-		geom.vertices.push_back({{x, -halfHeight, z}, {0.5f, 0.0f, 0.5f}});
+		geom.vertices.push_back({{x, halfHeight, z}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}});
 	}
 
-	// Top cap
 	for (int i = 0; i < segments; i++) {
-		geom.indices.push_back(0);
-		geom.indices.push_back(2 + i * 2);
-		geom.indices.push_back(2 + (i + 1) * 2);
+		geom.indices.push_back(topCenter);
+		geom.indices.push_back(topCapRingStart + i);
+		geom.indices.push_back(topCapRingStart + i + 1);
 	}
 
-	// Bottom cap
-	for (int i = 0; i < segments; i++) {
-		geom.indices.push_back(1);
-		geom.indices.push_back(3 + (i + 1) * 2);
-		geom.indices.push_back(3 + i * 2);
+	// --- Bottom cap (normal: -Y) ---
+
+	uint32_t bottomCenter = static_cast<uint32_t>(geom.vertices.size());
+	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}});
+
+	uint32_t bottomCapRingStart = static_cast<uint32_t>(geom.vertices.size());
+	for (int i = 0; i <= segments; i++) {
+		float theta = 2.0f * glm::pi<float>() * i / segments;
+		float x = radius * cos(theta);
+		float z = radius * sin(theta);
+		geom.vertices.push_back({{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}});
 	}
 
-	// Side faces
 	for (int i = 0; i < segments; i++) {
-		int topCurrent = 2 + i * 2;
-		int topNext = 2 + (i + 1) * 2;
-		int bottomCurrent = 3 + i * 2;
-		int bottomNext = 3 + (i + 1) * 2;
+		geom.indices.push_back(bottomCenter);
+		geom.indices.push_back(bottomCapRingStart + i + 1);
+		geom.indices.push_back(bottomCapRingStart + i);
+	}
 
-		// Two triangles per side quad
+	// --- Side faces (outward radial normals) ---
+
+	uint32_t sideTopStart = static_cast<uint32_t>(geom.vertices.size());
+	for (int i = 0; i <= segments; i++) {
+		float theta = 2.0f * glm::pi<float>() * i / segments;
+		float x = radius * cos(theta);
+		float z = radius * sin(theta);
+		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
+		geom.vertices.push_back({{x, halfHeight, z}, outward, {0.5f, 1.0f, 0.5f}});
+	}
+
+	uint32_t sideBottomStart = static_cast<uint32_t>(geom.vertices.size());
+	for (int i = 0; i <= segments; i++) {
+		float theta = 2.0f * glm::pi<float>() * i / segments;
+		float x = radius * cos(theta);
+		float z = radius * sin(theta);
+		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
+		geom.vertices.push_back({{x, -halfHeight, z}, outward, {0.5f, 0.0f, 0.5f}});
+	}
+
+	for (int i = 0; i < segments; i++) {
+		uint32_t topCurrent = sideTopStart + i;
+		uint32_t topNext = sideTopStart + i + 1;
+		uint32_t bottomCurrent = sideBottomStart + i;
+		uint32_t bottomNext = sideBottomStart + i + 1;
+
 		geom.indices.push_back(topCurrent);
 		geom.indices.push_back(bottomCurrent);
 		geom.indices.push_back(topNext);
@@ -207,10 +272,10 @@ PrimitiveGeometry Primitives::createPlane(float width, float height) {
 	float halfH = height * 0.5f;
 
 	geom.vertices = {
-	    {{-halfW, 0.0f, -halfH}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, -halfH}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, halfH}, {0.8f, 0.8f, 0.8f}},
-	    {{-halfW, 0.0f, halfH}, {0.8f, 0.8f, 0.8f}},
+	    {{-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{-halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
 	};
 
 	geom.indices = {0, 1, 2, 0, 2, 3};

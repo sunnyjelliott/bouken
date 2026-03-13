@@ -21,6 +21,9 @@ class RenderSystem {
 	void drawFrame(SwapChain& swapChain, World& world,
 	               const CameraSystem& cameraSystem);
 
+	uint32_t uploadMesh(const std::vector<Vertex>& vertices,
+	                    const std::vector<uint32_t>& indices);
+
    private:
 	void createRenderPass();
 	void createGraphicsPipeline();
