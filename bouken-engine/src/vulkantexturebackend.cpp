@@ -20,21 +20,20 @@ void VulkanTextureBackend::cleanup() {
 
 BackendTextureHandle VulkanTextureBackend::createTexture(
     const TextureCreateInfo& info) {
-	auto texture = std::make_unique<VulkanTexture>();
+	VulkanTexture texture;
 
-	createTextureImage(info, *texture);
-	createImageView(*texture);
-	createSampler(*texture);
+	createTextureImage(info, texture);
+	createImageView(texture);
+	createSampler(texture);
 
-	// Store binding data for easy access
-	texture->bindingData.imageView = texture->imageView;
-	texture->bindingData.sampler = texture->sampler;
+	texture.bindingData.imageView = texture.imageView;
+	texture.bindingData.sampler = texture.sampler;
 
-	// Use raw pointer as handle
-	VulkanTexture* handle = texture.get();
-	m_textures[handle] = std::move(*texture);
+	BackendTextureHandle handle = reinterpret_cast<BackendTextureHandle>(
+	    static_cast<uintptr_t>(m_nextHandle++));
+	m_textures[handle] = std::move(texture);
 
-	return static_cast<BackendTextureHandle>(handle);
+	return handle;
 }
 void VulkanTextureBackend::destroyTexture(BackendTextureHandle handle) {
 	auto it = m_textures.find(handle);

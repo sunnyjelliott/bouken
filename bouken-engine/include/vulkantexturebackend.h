@@ -29,6 +29,7 @@ class VulkanTextureBackend : public ITextureBackend {
 
 	VulkanContext* m_context = nullptr;
 	std::unordered_map<BackendTextureHandle, VulkanTexture> m_textures;
+	uint32_t m_nextHandle = 1;
 
 	void createTextureImage(const TextureCreateInfo& info,
 	                        VulkanTexture& texture);

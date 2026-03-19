@@ -10,11 +10,6 @@ void TextureManager::initialize(ITextureBackend* backend) {
 }
 
 void TextureManager::cleanup() {
-	// Destroy all textures via backend
-	for (auto& [id, metadata] : m_textures) {
-		m_backend->destroyTexture(metadata.backendHandle);
-	}
-
 	m_textures.clear();
 	m_pathToID.clear();
 	m_nextID = 1;
