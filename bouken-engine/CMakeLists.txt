@@ -78,6 +78,17 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tinyobjloader)
 
 # --------------------------------
+#               stb
+# --------------------------------
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    SYSTEM
+)
+FetchContent_MakeAvailable(stb)
+
+# --------------------------------
 #               vma
 # --------------------------------
 FetchContent_Declare(
@@ -232,6 +243,7 @@ endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include
+    ${stb_SOURCE_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE 

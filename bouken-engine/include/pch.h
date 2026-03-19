@@ -8,14 +8,20 @@
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec3f.h>
 
+#include <pxr/base/tf/diagnosticMgr.h>
+#include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/cone.h>
 #include <pxr/usd/usdGeom/cube.h>
 #include <pxr/usd/usdGeom/cylinder.h>
+#include <pxr/usd/usdGeom/gprim.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/sphere.h>
 #include <pxr/usd/usdGeom/xform.h>
-#include <pxr/base/tf/diagnosticMgr.h>
+#include <pxr/usd/usdShade/material.h>
+#include <pxr/usd/usdShade/materialBindingAPI.h>
+#include <pxr/usd/usdShade/shader.h>
+
 
 PXR_NAMESPACE_USING_DIRECTIVE
 

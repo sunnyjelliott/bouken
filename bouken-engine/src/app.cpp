@@ -54,6 +54,10 @@ void Application::initWindow() {
 void Application::initVulkan() {
 	m_context.init(m_window);
 	m_swapChain.init(m_context, m_window, WIDTH, HEIGHT);
+
+	m_vulkanTextureBackend.initialize(m_context);
+	m_textureManager.initialize(&m_vulkanTextureBackend);
+
 	m_renderSystem.initialize(m_context, m_swapChain);
 }
 
@@ -72,37 +76,17 @@ void Application::initScene() {
 
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
+	SceneLoadOptions options;
+	options.createHeirarchy = true;
 	std::filesystem::path scenePath = std::filesystem::current_path() /
 	                                  "assets" / "models" / "main_sponza" /
 	                                  "sponza.usdc";
 
-	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem);
-
-	std::cout << "=== Entity Count ===" << std::endl;
-	std::cout << "Total entities: " << m_world.getEntityCount() << std::endl;
-
-	int transformCount = 0;
-	int meshRendererCount = 0;
-
-	for (Entity e : m_world.view<Transform>()) {
-		transformCount++;
-	}
-
-	for (Entity e : m_world.view<MeshRenderer>()) {
-		meshRendererCount++;
-	}
-
-	std::cout << "Entities with Transform: " << transformCount << std::endl;
-	std::cout << "Entities with MeshRenderer: " << meshRendererCount
-	          << std::endl;
-	std::cout << "===================" << std::endl;
+	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem,
+	                       m_textureManager, m_materialManager, options);
 }
 
 void Application::mainLoop() {
-	Entity parent = 0;  // First entity created
-	float rotation = 0.0f;
-	std::cout << "main loop entered." << std::endl;
-
 	while (!glfwWindowShouldClose(m_window)) {
 		float currentTime = static_cast<float>(glfwGetTime());
 		float deltaTime = currentTime - m_lastFrameTime;
@@ -136,6 +120,9 @@ void Application::mainLoop() {
 
 void Application::cleanup() {
 	m_renderSystem.cleanup();
+	m_materialManager.cleanup();
+	m_textureManager.cleanup();
+	m_vulkanTextureBackend.cleanup();
 	m_swapChain.cleanup();
 	m_context.cleanup();
 
