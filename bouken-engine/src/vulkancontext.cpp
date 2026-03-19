@@ -151,7 +151,7 @@ void VulkanContext::createLogicalDevice() {
 
 	// Specify device features we want to use
 	VkPhysicalDeviceFeatures deviceFeatures{};
-	// We'll enable specific features later as needed
+	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
 	// Create logical device
 	VkDeviceCreateInfo createInfo{};
