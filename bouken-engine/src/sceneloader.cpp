@@ -587,7 +587,5 @@ uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
 	          << " vertices, " << indices.size() / 3 << " triangles, "
 	          << (hasUVs ? "has UVs" : "NO UVs") << ")" << std::endl;
 
-	// Upload mesh (TODO: implement this in RenderSystem)
-	// For now, return 0 (default cube)
-	return 0;
+	return renderSystem.uploadMesh(vertices, indices);
 }
