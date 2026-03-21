@@ -5,86 +5,122 @@ PrimitiveGeometry Primitives::createCube(float size) {
 	float half = size * 0.5f;
 
 	geom.vertices = {
-	    // Front face (normal: +Z)
-	    {{-half, -half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
-	    {{half, -half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
-	    {{half, half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
-	    {{-half, half, half}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+	    // Front face (Z+)
+	    {{-0.5f, -0.5f, 0.5f},
+	     {0.0f, 0.0f, 1.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, -0.5f, 0.5f},
+	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, 0.5f},
+	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, 0.5f},
+	     {0.0f, 0.0f, 1.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 
-	    // Back face (normal: -Z)
-	    {{half, -half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{-half, -half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{-half, half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{half, half, -half}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+	    // Back face (Z-)
+	    {{0.5f, -0.5f, -0.5f},
+	     {0.0f, 0.0f, -1.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, -0.5f, -0.5f},
+	     {0.0f, 0.0f, -1.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, -0.5f},
+	     {0.0f, 0.0f, -1.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f},
+	     {0.0f, 0.0f, -1.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 
-	    // Top face (normal: +Y)
-	    {{-half, half, half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{half, half, half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{half, half, -half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{-half, half, -half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    // Top face (Y+)
+	    {{-0.5f, 0.5f, 0.5f},
+	     {0.0f, 1.0f, 0.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, 0.5f},
+	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f},
+	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, -0.5f},
+	     {0.0f, 1.0f, 0.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 
-	    // Bottom face (normal: -Y)
-	    {{-half, -half, -half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{half, -half, -half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{half, -half, half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-	    {{-half, -half, half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+	    // Bottom face (Y-)
+	    {{-0.5f, -0.5f, -0.5f},
+	     {0.0f, -1.0f, 0.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, -0.5f, -0.5f},
+	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, -0.5f, 0.5f},
+	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, -0.5f, 0.5f},
+	     {0.0f, -1.0f, 0.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 
-	    // Right face (normal: +X)
-	    {{half, -half, half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
-	    {{half, -half, -half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
-	    {{half, half, -half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
-	    {{half, half, half}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},
+	    // Right face (X+)
+	    {{0.5f, -0.5f, 0.5f},
+	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, -0.5f, -0.5f},
+	     {1.0f, 0.0f, 0.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, -0.5f},
+	     {1.0f, 0.0f, 0.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{0.5f, 0.5f, 0.5f},
+	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 
-	    // Left face (normal: -X)
-	    {{-half, -half, -half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{-half, -half, half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{-half, half, half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	    {{-half, half, -half}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+	    // Left face (X-)
+	    {{-0.5f, -0.5f, -0.5f},
+	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, -0.5f, 0.5f},
+	     {-1.0f, 0.0f, 0.0f},
+	     {1.0f, 0.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, 0.5f},
+	     {-1.0f, 0.0f, 0.0f},
+	     {1.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
+	    {{-0.5f, 0.5f, -0.5f},
+	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 1.0f},
+	     {1.0f, 1.0f, 1.0f}},
 	};
 
 	geom.indices = {
-	    // Front
-	    0,
-	    1,
-	    2,
-	    0,
-	    2,
-	    3,
-	    // Back
-	    4,
-	    5,
-	    6,
-	    4,
-	    6,
-	    7,
-	    // Top
-	    8,
-	    9,
-	    10,
-	    8,
-	    10,
-	    11,
-	    // Bottom
-	    12,
-	    13,
-	    14,
-	    12,
-	    14,
-	    15,
-	    // Right
-	    16,
-	    17,
-	    18,
-	    16,
-	    18,
-	    19,
-	    // Left
-	    20,
-	    21,
-	    22,
-	    20,
-	    22,
-	    23,
+	    0,  1,  2,  2,  3,  0,   // Front
+	    4,  5,  6,  6,  7,  4,   // Back
+	    8,  9,  10, 10, 11, 8,   // Top
+	    12, 13, 14, 14, 15, 12,  // Bottom
+	    16, 17, 18, 18, 19, 16,  // Right
+	    20, 21, 22, 22, 23, 20   // Left
 	};
 
 	return geom;
@@ -108,6 +144,7 @@ PrimitiveGeometry Primitives::createSphere(float radius, int rings,
 			Vertex v;
 			v.position = glm::vec3(x, y, z);
 			v.normal = glm::normalize(v.position);
+			v.uv = {(float)segment / segments, (float)ring / rings};
 			// Color based on height (gradient from bottom to top)
 			float t = (y + radius) / (2.0f * radius);
 			v.color = glm::vec3(t, 0.5f, 1.0f - t);
@@ -143,16 +180,20 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 	// --- Side face vertices ---
 
 	// Apex (index 0)
-	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
+	geom.vertices.push_back(
+	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f}, {1.0f, 1.0f, 0.0f}});
 
 	// Base ring for sides (indices 1..segments+1)
-	// Outward-perpendicular to the lateral surface: normalize(height*cos, radius, height*sin)
+	// Outward-perpendicular to the lateral surface: normalize(height*cos,
+	// radius, height*sin)
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-		glm::vec3 sideNormal = glm::normalize(glm::vec3(height * cos(theta), radius, height * sin(theta)));
-		geom.vertices.push_back({{x, -halfHeight, z}, sideNormal, {1.0f, 1.0f, 1.0f}});
+		glm::vec3 sideNormal = glm::normalize(
+		    glm::vec3(height * cos(theta), radius, height * sin(theta)));
+		geom.vertices.push_back(
+		    {{x, -halfHeight, z}, sideNormal, {(float)i / segments, 0.0f}, {1.0f, 1.0f, 1.0f}});
 	}
 
 	// Side triangles (apex to base edge)
@@ -165,14 +206,16 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 	// --- Base cap vertices ---
 
 	uint32_t baseCenterIdx = static_cast<uint32_t>(geom.vertices.size());
-	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}});
+	geom.vertices.push_back(
+	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}});
 
 	uint32_t baseRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-		geom.vertices.push_back({{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}});
+		geom.vertices.push_back(
+		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {1.0f, 1.0f, 1.0f}});
 	}
 
 	// Base triangles (base center to base edge, reversed winding)
@@ -193,14 +236,16 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 	// --- Top cap (normal: +Y) ---
 
 	uint32_t topCenter = static_cast<uint32_t>(geom.vertices.size());
-	geom.vertices.push_back({{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}});
+	geom.vertices.push_back(
+	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 0.5f}, {0.5f, 1.0f, 0.5f}});
 
 	uint32_t topCapRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-		geom.vertices.push_back({{x, halfHeight, z}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}});
+		geom.vertices.push_back(
+		    {{x, halfHeight, z}, {0.0f, 1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 1.0f, 0.5f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -212,14 +257,16 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 	// --- Bottom cap (normal: -Y) ---
 
 	uint32_t bottomCenter = static_cast<uint32_t>(geom.vertices.size());
-	geom.vertices.push_back({{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}});
+	geom.vertices.push_back(
+	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}, {0.5f, 0.0f, 0.5f}});
 
 	uint32_t bottomCapRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
-		geom.vertices.push_back({{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}});
+		geom.vertices.push_back(
+		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 0.0f, 0.5f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -236,7 +283,8 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
 		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
-		geom.vertices.push_back({{x, halfHeight, z}, outward, {0.5f, 1.0f, 0.5f}});
+		geom.vertices.push_back(
+		    {{x, halfHeight, z}, outward, {(float)i / segments, 1.0f}, {0.5f, 1.0f, 0.5f}});
 	}
 
 	uint32_t sideBottomStart = static_cast<uint32_t>(geom.vertices.size());
@@ -245,7 +293,8 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
 		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
-		geom.vertices.push_back({{x, -halfHeight, z}, outward, {0.5f, 0.0f, 0.5f}});
+		geom.vertices.push_back(
+		    {{x, -halfHeight, z}, outward, {(float)i / segments, 0.0f}, {0.5f, 0.0f, 0.5f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -272,10 +321,10 @@ PrimitiveGeometry Primitives::createPlane(float width, float height) {
 	float halfH = height * 0.5f;
 
 	geom.vertices = {
-	    {{-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{-halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{-halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}, {0.8f, 0.8f, 0.8f}},
 	};
 
 	geom.indices = {0, 1, 2, 0, 2, 3};

@@ -357,7 +357,8 @@ std::string SceneLoader::extractTextureFromShader(const UsdShadeShader& shader,
 
 	size_t slash = path.find_last_of("/\\");
 	if (slash != std::string::npos) {
-		if (auto r = tryPath(sceneDir + path.substr(slash + 1)); !r.empty()) return r;
+		if (auto r = tryPath(sceneDir + path.substr(slash + 1)); !r.empty())
+			return r;
 	}
 
 	std::cerr << "Could not resolve texture path: " << assetPath << "\n";
@@ -465,105 +466,128 @@ bool SceneLoader::isUsdGeometry(const UsdPrim& prim) {
 
 uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
                                             RenderSystem& renderSystem) {
-	// Handle explicit mesh data
-	if (prim.IsA<UsdGeomMesh>()) {
-		UsdGeomMesh mesh(prim);
-
-		// Get vertex positions
-		VtArray<GfVec3f> points;
-		mesh.GetPointsAttr().Get(&points);
-
-		// Get normals (if they exist)
-		VtArray<GfVec3f> normals;
-		UsdAttribute normalsAttr = mesh.GetNormalsAttr();
-		if (normalsAttr.HasValue()) {
-			normalsAttr.Get(&normals);
-		}
-
-		// Get face vertex indices
-		VtArray<int> faceVertexIndices;
-		mesh.GetFaceVertexIndicesAttr().Get(&faceVertexIndices);
-
-		// Get face vertex counts
-		VtArray<int> faceVertexCounts;
-		mesh.GetFaceVertexCountsAttr().Get(&faceVertexCounts);
-
-		std::vector<Vertex> vertices;
-		std::vector<uint32_t> indices;
-
-		// Convert points to vertices
-		for (size_t i = 0; i < points.size(); i++) {
-			Vertex v;
-			v.position = glm::vec3(points[i][0], points[i][1], points[i][2]);
-
-			// Use USD normals if available, otherwise compute later
-			if (i < normals.size()) {
-				v.normal =
-				    glm::vec3(normals[i][0], normals[i][1], normals[i][2]);
-			} else {
-				v.normal = glm::vec3(0.0f, 1.0f, 0.0f);  // Placeholder
-			}
-
-			v.color = glm::vec3(0.7f, 0.7f, 0.7f);
-			vertices.push_back(v);
-		}
-
-		// Triangulate faces
-		uint32_t indexOffset = 0;
-		for (int faceVertexCount : faceVertexCounts) {
-			if (faceVertexCount == 3) {
-				// Already a triangle
-				indices.push_back(faceVertexIndices[indexOffset + 0]);
-				indices.push_back(faceVertexIndices[indexOffset + 1]);
-				indices.push_back(faceVertexIndices[indexOffset + 2]);
-			} else if (faceVertexCount == 4) {
-				// Quad - split into two triangles
-				indices.push_back(faceVertexIndices[indexOffset + 0]);
-				indices.push_back(faceVertexIndices[indexOffset + 1]);
-				indices.push_back(faceVertexIndices[indexOffset + 2]);
-
-				indices.push_back(faceVertexIndices[indexOffset + 0]);
-				indices.push_back(faceVertexIndices[indexOffset + 2]);
-				indices.push_back(faceVertexIndices[indexOffset + 3]);
-			} else {
-				// N-gon - fan triangulation from first vertex
-				for (int i = 1; i < faceVertexCount - 1; i++) {
-					indices.push_back(faceVertexIndices[indexOffset + 0]);
-					indices.push_back(faceVertexIndices[indexOffset + i]);
-					indices.push_back(faceVertexIndices[indexOffset + i + 1]);
-				}
-			}
-			indexOffset += faceVertexCount;
-		}
-
-		// If USD didn't have normals, compute them from triangles
-		if (normals.empty()) {
-			// TODO: Compute per-vertex normals from face normals
-			// For now, just leave placeholder normals
-		}
-
-		// Upload to GPU
-		return renderSystem.uploadMesh(vertices, indices);
-	}
-
-	// Handle schema primitives - map to hardcoded meshes
+	// Handle schema primitives (Cube, Sphere, Cone, Cylinder)
 	if (prim.IsA<UsdGeomCube>()) {
-		return 0;  // Cube mesh
+		return 0;  // Cube mesh ID
+	} else if (prim.IsA<UsdGeomSphere>()) {
+		return 1;  // Sphere mesh ID
+	} else if (prim.IsA<UsdGeomCone>()) {
+		return 2;  // Cone mesh ID
+	} else if (prim.IsA<UsdGeomCylinder>()) {
+		return 3;  // Cylinder mesh ID
 	}
 
-	if (prim.IsA<UsdGeomSphere>()) {
-		return 1;  // Sphere mesh
+	// Handle UsdGeomMesh
+	if (!prim.IsA<UsdGeomMesh>()) {
+		std::cerr << "Prim is not a mesh: " << prim.GetPath() << std::endl;
+		return 0;
 	}
 
-	if (prim.IsA<UsdGeomCone>()) {
-		return 2;  // Cone mesh
+	UsdGeomMesh mesh(prim);
+
+	// Get vertices
+	UsdAttribute pointsAttr = mesh.GetPointsAttr();
+	VtArray<GfVec3f> points;
+	pointsAttr.Get(&points);
+
+	// Get normals
+	UsdAttribute normalsAttr = mesh.GetNormalsAttr();
+	VtArray<GfVec3f> normals;
+	bool hasNormals = normalsAttr.Get(&normals);
+
+	// Get UVs using UsdGeomPrimvarsAPI (USD 26.3 API)
+	UsdGeomPrimvarsAPI primvarsAPI(prim);
+	VtArray<GfVec2f> uvs;
+	bool hasUVs = false;
+
+	// Try standard USD primvar names in order of preference
+	std::vector<TfToken> uvNames = {
+	    TfToken("st"),    // Standard USD texture coordinates
+	    TfToken("uv"),    // Common alternative
+	    TfToken("UVMap")  // Blender/other DCCs
+	};
+
+	for (const TfToken& uvName : uvNames) {
+		UsdGeomPrimvar uvPrimvar = primvarsAPI.GetPrimvar(uvName);
+		if (uvPrimvar && uvPrimvar.HasValue()) {
+			if (uvPrimvar.Get(&uvs)) {
+				hasUVs = true;
+				std::cout << "  Found UVs as '" << uvName << "'" << std::endl;
+				break;
+			}
+		}
 	}
 
-	if (prim.IsA<UsdGeomCylinder>()) {
-		return 0;  // Fallback to cube
+	// Get face vertex counts and indices
+	UsdAttribute faceVertexCountsAttr = mesh.GetFaceVertexCountsAttr();
+	UsdAttribute faceVertexIndicesAttr = mesh.GetFaceVertexIndicesAttr();
+
+	VtArray<int> faceVertexCounts;
+	VtArray<int> faceVertexIndices;
+
+	faceVertexCountsAttr.Get(&faceVertexCounts);
+	faceVertexIndicesAttr.Get(&faceVertexIndices);
+
+	// Build vertex buffer
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	// Triangulate and build vertices
+	size_t indexOffset = 0;
+	for (int faceVertexCount : faceVertexCounts) {
+		if (faceVertexCount < 3) {
+			std::cerr << "Invalid face with " << faceVertexCount << " vertices"
+			          << std::endl;
+			indexOffset += faceVertexCount;
+			continue;
+		}
+
+		// Fan triangulation: for n vertices, create (n-2) triangles
+		// All triangles share vertex 0, then connect consecutive pairs
+		// Example: pentagon (0,1,2,3,4) -> triangles (0,1,2), (0,2,3), (0,3,4)
+
+		for (int tri = 0; tri < faceVertexCount - 2; ++tri) {
+			// Triangle vertices: 0, tri+1, tri+2
+			int localIndices[3] = {0, tri + 1, tri + 2};
+
+			for (int i = 0; i < 3; ++i) {
+				int vertexIndex =
+				    faceVertexIndices[indexOffset + localIndices[i]];
+
+				Vertex v;
+				v.position =
+				    glm::vec3(points[vertexIndex][0], points[vertexIndex][1],
+				              points[vertexIndex][2]);
+
+				if (hasNormals && vertexIndex < normals.size()) {
+					v.normal = glm::vec3(normals[vertexIndex][0],
+					                     normals[vertexIndex][1],
+					                     normals[vertexIndex][2]);
+				} else {
+					v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+				}
+
+				if (hasUVs && vertexIndex < uvs.size()) {
+					v.uv = glm::vec2(uvs[vertexIndex][0], uvs[vertexIndex][1]);
+				} else {
+					v.uv = glm::vec2(0.0f, 0.0f);
+				}
+
+				v.color = glm::vec3(1.0f);
+
+				indices.push_back(static_cast<uint32_t>(vertices.size()));
+				vertices.push_back(v);
+			}
+		}
+
+		indexOffset += faceVertexCount;
 	}
 
-	std::cerr << "  -> Unknown geometry type: " << prim.GetTypeName()
-	          << std::endl;
+	std::cout << "  Loaded mesh: " << prim.GetPath() << " (" << vertices.size()
+	          << " vertices, " << indices.size() / 3 << " triangles, "
+	          << (hasUVs ? "has UVs" : "NO UVs") << ")" << std::endl;
+
+	// Upload mesh (TODO: implement this in RenderSystem)
+	// For now, return 0 (default cube)
 	return 0;
 }
