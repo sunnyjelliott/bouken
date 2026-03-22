@@ -7,7 +7,14 @@ layout(location = 3) in vec3 fragColor;
 
 layout(location = 0) out vec4 outColor;
 
+// Texture samplers
+layout(set = 0, binding = 0) uniform sampler2D albedoTexture;
+layout(set = 0, binding = 1) uniform sampler2D normalTexture;
+
 void main() {
+    // Sample albedo texture
+    vec3 albedo = texture(albedoTexture, fragUV).rgb;
+    
     // Normalize the normal (interpolation can denormalize it)
     vec3 normal = normalize(fragNormal);
     
@@ -18,11 +25,8 @@ void main() {
     // Ambient + diffuse
     vec3 ambient = vec3(0.3);
     vec3 diffuse = vec3(0.7) * diff;
-    
-    // For now, use vertex color as base color (will be texture later)
-    vec3 baseColor = fragColor;
-    
-    vec3 finalColor = (ambient + diffuse) * baseColor;
+
+    vec3 finalColor = (ambient + diffuse) * albedo;
     
     outColor = vec4(finalColor, 1.0);
 }

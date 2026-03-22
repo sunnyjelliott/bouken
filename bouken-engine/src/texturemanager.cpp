@@ -1,11 +1,13 @@
 #include "texturemanager.h"
 #include "itexturebackend.h"
+#include "vulkantexturebackend.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 void TextureManager::initialize(ITextureBackend* backend) {
 	m_backend = backend;
+	createDefaultTextures();
 	std::cout << "TextureManager initialized" << std::endl;
 }
 
@@ -83,4 +85,36 @@ void* TextureManager::getBindingData(uint32_t textureID) const {
 
 bool TextureManager::hasTexture(uint32_t textureID) const {
 	return m_textures.find(textureID) != m_textures.end();
+}
+
+void TextureManager::createDefaultTextures() {
+	// Register default textures from backend
+	VulkanTextureBackend* vulkanBackend =
+	    dynamic_cast<VulkanTextureBackend*>(m_backend);
+	if (vulkanBackend) {
+		TextureMetadata whiteMeta;
+		whiteMeta.filepath = "[default_white]";
+		whiteMeta.width = 1;
+		whiteMeta.height = 1;
+		whiteMeta.backendHandle = vulkanBackend->getDefaultWhiteTexture();
+
+		m_defaultWhiteTextureID = m_nextID++;
+		m_textures[m_defaultWhiteTextureID] = whiteMeta;
+		m_pathToID["[default_white]"] = m_defaultWhiteTextureID;
+
+		TextureMetadata normalMeta;
+		normalMeta.filepath = "[default_normal]";
+		normalMeta.width = 1;
+		normalMeta.height = 1;
+		normalMeta.backendHandle = vulkanBackend->getDefaultNormalTexture();
+
+		m_defaultNormalTextureID = m_nextID++;
+		m_textures[m_defaultNormalTextureID] = normalMeta;
+		m_pathToID["[default_normal]"] = m_defaultNormalTextureID;
+
+		std::cout << "  Default white texture ID: " << m_defaultWhiteTextureID
+		          << std::endl;
+		std::cout << "  Default normal texture ID: " << m_defaultNormalTextureID
+		          << std::endl;
+	}
 }

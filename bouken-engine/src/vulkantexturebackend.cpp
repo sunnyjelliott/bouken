@@ -4,6 +4,7 @@
 
 void VulkanTextureBackend::initialize(VulkanContext& context) {
 	m_context = &context;
+	createDefaultTextures();
 	std::cout << "VulkanTextureBackend initialized" << std::endl;
 }
 
@@ -211,4 +212,28 @@ void VulkanTextureBackend::createSampler(VulkanTexture& texture) {
 	                    &texture.sampler) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create texture sampler!");
 	}
+}
+
+void VulkanTextureBackend::createDefaultTextures() {
+	// Create 1x1 white texture
+	uint8_t whitePixel[4] = {255, 255, 255, 255};
+	TextureCreateInfo whiteInfo;
+	whiteInfo.pixels = whitePixel;
+	whiteInfo.width = 1;
+	whiteInfo.height = 1;
+	whiteInfo.channels = 4;
+	whiteInfo.generateMipmaps = false;
+	m_defaultWhiteTexture = createTexture(whiteInfo);
+	std::cout << "  Created default white texture" << std::endl;
+
+	// Create 1x1 flat normal map (128, 128, 255 = pointing up in tangent space)
+	uint8_t normalPixel[4] = {128, 128, 255, 255};
+	TextureCreateInfo normalInfo;
+	normalInfo.pixels = normalPixel;
+	normalInfo.width = 1;
+	normalInfo.height = 1;
+	normalInfo.channels = 4;
+	normalInfo.generateMipmaps = false;
+	m_defaultNormalTexture = createTexture(normalInfo);
+	std::cout << "  Created default normal texture" << std::endl;
 }

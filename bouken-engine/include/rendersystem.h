@@ -10,6 +10,8 @@ typedef struct VmaAllocation_T* VmaAllocation;
 
 class World;
 class CameraSystem;
+class MaterialManager;
+class TextureManager;
 
 class RenderSystem {
    public:
@@ -19,10 +21,14 @@ class RenderSystem {
 	uint32_t loadMesh(const std::string& filepath);
 
 	void drawFrame(SwapChain& swapChain, World& world,
-	               const CameraSystem& cameraSystem);
+	               const CameraSystem& cameraSystem,
+	               MaterialManager& materialManager);
 
 	uint32_t uploadMesh(const std::vector<Vertex>& vertices,
 	                    const std::vector<uint32_t>& indices);
+
+	void createMaterialDescriptorSets(MaterialManager& materialManager,
+	                                  TextureManager& textureManager);
 
    private:
 	void createRenderPass();
@@ -30,13 +36,16 @@ class RenderSystem {
 	void createMeshBuffers();
 	void createCommandBuffer();
 	void createSyncObjects();
+	void createDescriptorSetLayout();
+	void createDescriptorPool();
 
 	void uploadMeshData(const std::vector<Vertex>& vertices,
 	                    const std::vector<uint32_t>& indices);
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex,
 	                         SwapChain& swapChain, World& world,
-	                         const CameraSystem& cameraSystem);
+	                         const CameraSystem& cameraSystem,
+	                         MaterialManager& materialManager);
 
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 
@@ -76,4 +85,8 @@ class RenderSystem {
 	VkSemaphore m_renderFinishedSemaphore = VK_NULL_HANDLE;
 	VkFence m_inFlightFence = VK_NULL_HANDLE;
 	// TODO: Multiple frames in flight (2-3 sets of sync objects)
+
+	// Descriptor Sets (Textures)
+	VkDescriptorSetLayout m_materialDescriptorSetLayout = VK_NULL_HANDLE;
+	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
 };

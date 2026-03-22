@@ -2,6 +2,8 @@
 #include "material.h"
 #include "pch.h"
 
+// TODO: Abstract Descriptor Sets from VK
+
 class MaterialManager {
    public:
 	void initialize();
@@ -9,8 +11,13 @@ class MaterialManager {
 
 	uint32_t createMaterial(const Material& material);
 
+	void createDescriptorSet(uint32_t materialID,
+	                         VkDescriptorSet descriptorSet);
+
 	const Material& getMaterial(uint32_t materialID) const;
 	Material& getMaterial(uint32_t materialID);
+
+	VkDescriptorSet getDescriptorSet(uint32_t materialID) const;
 
 	bool hasMaterial(uint32_t materialID) const;
 
@@ -19,7 +26,12 @@ class MaterialManager {
 	size_t getMaterialCount() const { return m_materials.size(); }
 
    private:
-	std::unordered_map<uint32_t, Material> m_materials;
+	struct MaterialData {
+		Material material;
+		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+	};
+
+	std::unordered_map<uint32_t, MaterialData> m_materials;
 	uint32_t m_nextID = 1;
 
 	void createDefaultMaterial();

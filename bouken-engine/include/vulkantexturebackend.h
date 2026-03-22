@@ -18,6 +18,13 @@ class VulkanTextureBackend : public ITextureBackend {
 	void destroyTexture(BackendTextureHandle handle) override;
 	void* getBindingData(BackendTextureHandle handle) override;
 
+	BackendTextureHandle getDefaultWhiteTexture() const {
+		return m_defaultWhiteTexture;
+	}
+	BackendTextureHandle getDefaultNormalTexture() const {
+		return m_defaultNormalTexture;
+	}
+
    private:
 	struct VulkanTexture {
 		VkImage image = VK_NULL_HANDLE;
@@ -35,4 +42,9 @@ class VulkanTextureBackend : public ITextureBackend {
 	                        VulkanTexture& texture);
 	void createImageView(VulkanTexture& texture);
 	void createSampler(VulkanTexture& texture);
+
+	BackendTextureHandle m_defaultWhiteTexture = nullptr;
+	BackendTextureHandle m_defaultNormalTexture = nullptr;
+
+	void createDefaultTextures();
 };

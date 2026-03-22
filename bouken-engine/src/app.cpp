@@ -84,6 +84,9 @@ void Application::initScene() {
 
 	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem,
 	                       m_textureManager, m_materialManager, options);
+
+	m_renderSystem.createMaterialDescriptorSets(m_materialManager,
+	                                            m_textureManager);
 }
 
 void Application::mainLoop() {
@@ -112,7 +115,8 @@ void Application::mainLoop() {
 		m_transformSystem.update(m_world);
 
 		// Render
-		m_renderSystem.drawFrame(m_swapChain, m_world, m_cameraSystem);
+		m_renderSystem.drawFrame(m_swapChain, m_world, m_cameraSystem,
+		                         m_materialManager);
 	}
 
 	vkDeviceWaitIdle(m_context.getDevice());

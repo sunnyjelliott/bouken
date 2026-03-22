@@ -3,8 +3,11 @@
 #include <vk_mem_alloc.h>
 
 #include "camerasystem.h"
+#include "materialmanager.h"
 #include "meshloader.h"
 #include "primitives.h"
+#include "texturemanager.h"
+#include "vulkantexturebackend.h"
 #include "world.h"
 
 static std::vector<char> readFile(const std::string& filename) {
@@ -46,11 +49,13 @@ void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain) {
 	m_swapChainFormat = swapChain.getImageFormat();
 
 	createRenderPass();
+	createDescriptorSetLayout();
 	createGraphicsPipeline();
 	swapChain.createFramebuffers(m_renderPass);
 	createMeshBuffers();
 	createCommandBuffer();
 	createSyncObjects();
+	createDescriptorPool();
 }
 
 void RenderSystem::cleanup() {
@@ -65,8 +70,11 @@ void RenderSystem::cleanup() {
 	vmaDestroyBuffer(m_context->getAllocator(), m_vertexBuffer,
 	                 m_vertexBufferAllocation);
 
+	vkDestroyDescriptorPool(m_context->getDevice(), m_descriptorPool, nullptr);
 	vkDestroyPipeline(m_context->getDevice(), m_graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(m_context->getDevice(), m_pipelineLayout, nullptr);
+	vkDestroyDescriptorSetLayout(m_context->getDevice(),
+	                             m_materialDescriptorSetLayout, nullptr);
 	vkDestroyRenderPass(m_context->getDevice(), m_renderPass, nullptr);
 }
 
@@ -93,7 +101,8 @@ uint32_t RenderSystem::loadMesh(const std::string& filepath) {
 }
 
 void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
-                             const CameraSystem& cameraSystem) {
+                             const CameraSystem& cameraSystem,
+                             MaterialManager& materialManager) {
 	vkWaitForFences(m_context->getDevice(), 1, &m_inFlightFence, VK_TRUE,
 	                UINT64_MAX);
 	vkResetFences(m_context->getDevice(), 1, &m_inFlightFence);
@@ -105,7 +114,7 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 
 	vkResetCommandBuffer(m_commandBuffer, 0);
 	recordCommandBuffer(m_commandBuffer, imageIndex, swapChain, world,
-	                    cameraSystem);
+	                    cameraSystem, materialManager);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -165,6 +174,103 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	uploadMeshData(m_allVertices, m_allIndices);
 
 	return meshID;
+}
+
+void RenderSystem::createMaterialDescriptorSets(
+    MaterialManager& materialManager, TextureManager& textureManager) {
+	std::cout << "Creating descriptor sets for "
+	          << materialManager.getMaterialCount() << " materials..."
+	          << std::endl;
+
+	uint32_t defaultWhiteID = textureManager.getDefaultWhiteTextureID();
+	uint32_t defaultNormalID = textureManager.getDefaultNormalTextureID();
+
+	// Iterate through all materials
+	for (uint32_t matID = 0; matID < materialManager.getMaterialCount() + 1;
+	     ++matID) {
+		if (!materialManager.hasMaterial(matID)) {
+			continue;
+		}
+
+		const Material& material = materialManager.getMaterial(matID);
+
+		// Allocate descriptor set
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = m_descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &m_materialDescriptorSetLayout;
+
+		VkDescriptorSet descriptorSet;
+		if (vkAllocateDescriptorSets(m_context->getDevice(), &allocInfo,
+		                             &descriptorSet) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate descriptor set!");
+		}
+
+		// Use material textures if available, otherwise use defaults
+		uint32_t albedoID = (material.albedoTextureID != 0)
+		                        ? material.albedoTextureID
+		                        : defaultWhiteID;
+		uint32_t normalID = (material.normalTextureID != 0)
+		                        ? material.normalTextureID
+		                        : defaultNormalID;
+
+		// Get texture binding data
+		void* albedoBindingData = textureManager.getBindingData(albedoID);
+		void* normalBindingData = textureManager.getBindingData(normalID);
+
+		VulkanTextureBindingData* albedoData =
+		    static_cast<VulkanTextureBindingData*>(albedoBindingData);
+		VulkanTextureBindingData* normalData =
+		    static_cast<VulkanTextureBindingData*>(normalBindingData);
+
+		if (!albedoData || !normalData) {
+			std::cerr << "Failed to get texture binding data for material "
+			          << matID << std::endl;
+			continue;
+		}
+
+		std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+
+		// Binding 0: Albedo texture
+		VkDescriptorImageInfo albedoImageInfo{};
+		albedoImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		albedoImageInfo.imageView = albedoData->imageView;
+		albedoImageInfo.sampler = albedoData->sampler;
+
+		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrites[0].dstSet = descriptorSet;
+		descriptorWrites[0].dstBinding = 0;
+		descriptorWrites[0].dstArrayElement = 0;
+		descriptorWrites[0].descriptorType =
+		    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		descriptorWrites[0].descriptorCount = 1;
+		descriptorWrites[0].pImageInfo = &albedoImageInfo;
+
+		// Binding 1: Normal texture
+		VkDescriptorImageInfo normalImageInfo{};
+		normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		normalImageInfo.imageView = normalData->imageView;
+		normalImageInfo.sampler = normalData->sampler;
+
+		descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrites[1].dstSet = descriptorSet;
+		descriptorWrites[1].dstBinding = 1;
+		descriptorWrites[1].dstArrayElement = 0;
+		descriptorWrites[1].descriptorType =
+		    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		descriptorWrites[1].descriptorCount = 1;
+		descriptorWrites[1].pImageInfo = &normalImageInfo;
+
+		// Update both descriptors
+		vkUpdateDescriptorSets(m_context->getDevice(), 2,
+		                       descriptorWrites.data(), 0, nullptr);
+
+		// Store descriptor set in material
+		materialManager.createDescriptorSet(matID, descriptorSet);
+	}
+
+	std::cout << "Created descriptor sets for materials" << std::endl;
 }
 
 void RenderSystem::createRenderPass() {
@@ -344,10 +450,10 @@ void RenderSystem::createGraphicsPipeline() {
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = 0;
+	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &m_materialDescriptorSetLayout;
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-	// TODO: Add descriptor set layouts for uniforms/textures
 
 	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_pipelineLayout) != VK_SUCCESS) {
@@ -410,6 +516,61 @@ void RenderSystem::createSyncObjects() {
 	                  &m_inFlightFence) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create synchronization objects!");
 	}
+}
+
+void RenderSystem::createDescriptorSetLayout() {
+	// Binding 0: Albedo texture
+	VkDescriptorSetLayoutBinding albedoBinding{};
+	albedoBinding.binding = 0;
+	albedoBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	albedoBinding.descriptorCount = 1;
+	albedoBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	albedoBinding.pImmutableSamplers = nullptr;
+
+	// Binding 1: Normal texture
+	VkDescriptorSetLayoutBinding normalBinding{};
+	normalBinding.binding = 1;
+	normalBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	normalBinding.descriptorCount = 1;
+	normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	normalBinding.pImmutableSamplers = nullptr;
+
+	std::array<VkDescriptorSetLayoutBinding, 2> bindings = {albedoBinding,
+	                                                        normalBinding};
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+	layoutInfo.pBindings = bindings.data();
+
+	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &layoutInfo,
+	                                nullptr, &m_materialDescriptorSetLayout) !=
+	    VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor set layout!");
+	}
+
+	std::cout << "Created descriptor set layout for materials" << std::endl;
+}
+
+void RenderSystem::createDescriptorPool() {
+	// Pool size for combined image samplers
+	// Allocate enough for all materials (estimate ~100 materials max for now)
+	VkDescriptorPoolSize poolSize{};
+	poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSize.descriptorCount = 200;  // 2 textures * 100 materials
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = 1;
+	poolInfo.pPoolSizes = &poolSize;
+	poolInfo.maxSets = 100;  // Max 100 materials
+
+	if (vkCreateDescriptorPool(m_context->getDevice(), &poolInfo, nullptr,
+	                           &m_descriptorPool) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor pool!");
+	}
+
+	std::cout << "Created descriptor pool (max 100 material sets)" << std::endl;
 }
 
 void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
@@ -560,7 +721,8 @@ void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
 void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                        uint32_t imageIndex,
                                        SwapChain& swapChain, World& world,
-                                       const CameraSystem& cameraSystem) {
+                                       const CameraSystem& cameraSystem,
+                                       MaterialManager& materialManager) {
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -613,11 +775,22 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 	glm::mat4 projection = cameraSystem.getProjectionMatrix(world, aspectRatio);
 
 	// Render all entities with Transform + MeshRenderer
-	for (Entity entity : world.view<Transform, MeshRenderer>()) {
+	for (Entity entity :
+	     world.view<Transform, MeshRenderer, MaterialBinding>()) {
 		Transform& transform = world.getComponent<Transform>(entity);
 		MeshRenderer& meshRenderer = world.getComponent<MeshRenderer>(entity);
+		MaterialBinding& materialBinding =
+		    world.getComponent<MaterialBinding>(entity);
 
 		if (!meshRenderer.visible) continue;
+
+		VkDescriptorSet descriptorSet =
+		    materialManager.getDescriptorSet(materialBinding.materialID);
+		if (descriptorSet != VK_NULL_HANDLE) {
+			vkCmdBindDescriptorSets(
+			    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			    m_pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		}
 
 		// Get all mesh IDs (handles both single and multiple)
 		std::vector<uint32_t> meshIDsToRender = meshRenderer.getMeshIDs();
@@ -626,15 +799,16 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 		for (uint32_t currentMeshID : meshIDsToRender) {
 			auto it = m_meshes.find(currentMeshID);
 			if (it == m_meshes.end()) {
-				std::cerr << "Warning: Mesh ID " << currentMeshID
-				          << " not found!\n";
 				continue;
 			}
 
 			const MeshInfo& meshInfo = it->second;
-
-			// Use world matrix from transform
 			glm::mat4 model = transform.worldMatrix;
+
+			// Bind material descriptor set
+			// NOTE: We need access to MaterialManager here
+			// For now, skip binding if descriptor set is null
+			// TODO: Pass MaterialManager to drawFrame
 
 			struct {
 				glm::mat4 model;
@@ -650,7 +824,6 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 			                   VK_SHADER_STAGE_VERTEX_BIT, 0,
 			                   sizeof(pushConstants), &pushConstants);
 
-			// Draw this mesh
 			vkCmdDrawIndexed(commandBuffer, meshInfo.indexCount, 1,
 			                 meshInfo.firstIndex, meshInfo.firstVertex, 0);
 		}

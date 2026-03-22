@@ -18,42 +18,47 @@ void MaterialManager::createDefaultMaterial() {
 	defaultMat.albedoTextureID = 0;
 	defaultMat.normalTextureID = 0;
 
-	m_materials[0] = defaultMat;
+	MaterialData data;
+	data.material = defaultMat;
+	data.descriptorSet = VK_NULL_HANDLE;  // Will be created by RenderSystem
+
+	m_materials[0] = data;
 	std::cout << "Created default material (ID: 0)" << std::endl;
 }
 
 uint32_t MaterialManager::createMaterial(const Material& material) {
 	uint32_t materialID = m_nextID++;
-	m_materials[materialID] = material;
+
+	MaterialData data;
+	data.material = material;
+	data.descriptorSet = VK_NULL_HANDLE;  // Will be created later
+
+	m_materials[materialID] = data;
 
 	std::cout << "Created material ID: " << materialID << std::endl;
 	std::cout << "  baseColor: (" << material.baseColor.r << ", "
 	          << material.baseColor.g << ", " << material.baseColor.b << ")"
 	          << std::endl;
 
-	if (material.albedoTextureID != 0) {
-		std::cout << "  albedoTexture: ID " << material.albedoTextureID
-		          << std::endl;
-	} else {
-		std::cout << "  albedoTexture: none (using baseColor)" << std::endl;
-	}
-
-	if (material.normalTextureID != 0) {
-		std::cout << "  normalTexture: ID " << material.normalTextureID
-		          << std::endl;
-	}
-
 	return materialID;
+}
+
+void MaterialManager::createDescriptorSet(uint32_t materialID,
+                                          VkDescriptorSet descriptorSet) {
+	auto it = m_materials.find(materialID);
+	if (it != m_materials.end()) {
+		it->second.descriptorSet = descriptorSet;
+	}
 }
 
 const Material& MaterialManager::getMaterial(uint32_t materialID) const {
 	auto it = m_materials.find(materialID);
 	if (it == m_materials.end()) {
 		// Return default material if not found
-		static const Material defaultMat = m_materials.at(0);
+		static const Material defaultMat = m_materials.at(0).material;
 		return defaultMat;
 	}
-	return it->second;
+	return it->second.material;
 }
 
 Material& MaterialManager::getMaterial(uint32_t materialID) {
@@ -62,7 +67,20 @@ Material& MaterialManager::getMaterial(uint32_t materialID) {
 		throw std::runtime_error("Material not found: " +
 		                         std::to_string(materialID));
 	}
-	return it->second;
+	return it->second.material;
+}
+
+VkDescriptorSet MaterialManager::getDescriptorSet(uint32_t materialID) const {
+	auto it = m_materials.find(materialID);
+	if (it == m_materials.end() || it->second.descriptorSet == VK_NULL_HANDLE) {
+		// Return default material's descriptor set
+		auto defaultIt = m_materials.find(0);
+		if (defaultIt != m_materials.end()) {
+			return defaultIt->second.descriptorSet;
+		}
+		return VK_NULL_HANDLE;
+	}
+	return it->second.descriptorSet;
 }
 
 bool MaterialManager::hasMaterial(uint32_t materialID) const {
