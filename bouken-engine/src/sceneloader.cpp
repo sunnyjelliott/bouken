@@ -556,8 +556,8 @@ UsdMeshData loadUsdMeshData(const UsdGeomMesh& mesh) {
 	mesh.GetPointsAttr().Get(&data.points);
 
 	data.hasNormals = mesh.GetNormalsAttr().Get(&data.normals);
-	data.normalInterpolation =
-	    data.hasNormals ? mesh.GetNormalsInterpolation() : UsdGeomTokens->vertex;
+	data.normalInterpolation = data.hasNormals ? mesh.GetNormalsInterpolation()
+	                                           : UsdGeomTokens->vertex;
 
 	UsdGeomPrimvarsAPI primvarsAPI(mesh.GetPrim());
 	const TfToken uvNames[] = {TfToken("st"), TfToken("uv"), TfToken("UVMap")};
@@ -579,13 +579,14 @@ UsdMeshData loadUsdMeshData(const UsdGeomMesh& mesh) {
 	return data;
 }
 
-Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx, int vertexIndex) {
+Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx,
+                   int vertexIndex) {
 	Vertex v;
 	v.color = glm::vec3(1.0f);
 
-	v.position = glm::vec3(data.points[vertexIndex][0],
-	                       data.points[vertexIndex][1],
-	                       data.points[vertexIndex][2]);
+	v.position =
+	    glm::vec3(data.points[vertexIndex][0], data.points[vertexIndex][1],
+	              data.points[vertexIndex][2]);
 
 	if (data.hasNormals) {
 		const int normalIdx =
@@ -604,11 +605,11 @@ Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx, int vertexIndex) 
 	}
 
 	if (data.hasUVs) {
-		const int uvIdx =
-		    (data.uvInterpolation == UsdGeomTokens->faceVarying) ? faceVertexIdx
-		                                                          : vertexIndex;
+		const int uvIdx = (data.uvInterpolation == UsdGeomTokens->faceVarying)
+		                      ? faceVertexIdx
+		                      : vertexIndex;
 		if (uvIdx < (int)data.uvs.size()) {
-			v.uv = glm::vec2(data.uvs[uvIdx][0], data.uvs[uvIdx][1]);
+			v.uv = glm::vec2(data.uvs[uvIdx][0], 1.0f - data.uvs[uvIdx][1]);
 		} else {
 			v.uv = glm::vec2(0.0f, 0.0f);
 		}
