@@ -40,7 +40,8 @@ glm::mat4 CameraSystem::getProjectionMatrix(World& world,
 void CameraSystem::updateFreeFly(World& world, float deltaTime,
                                  bool isForwardPressed, bool isBackPressed,
                                  bool isLeftPressed, bool isRightPressed,
-                                 float mouseDeltaX, float mouseDeltaY) {
+                                 float mouseDeltaX, float mouseDeltaY,
+                                 bool sprint) {
 	if (m_activeCamera == NULL_ENTITY || !world.isEntityAlive(m_activeCamera)) {
 		return;
 	}
@@ -73,6 +74,9 @@ void CameraSystem::updateFreeFly(World& world, float deltaTime,
 	    glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
 
 	float velocity = m_moveSpeed * deltaTime;
+	if (sprint) {
+		velocity *= 2.0f;
+	}
 
 	if (isForwardPressed) transform.position += front * velocity;
 	if (isBackPressed) transform.position -= front * velocity;

@@ -25,6 +25,7 @@ enum class InputAction {
 	Crouch,
 	Fire,
 	ToggleMouseCapture,
+	Sprint,
 };
 
 enum class InputState {

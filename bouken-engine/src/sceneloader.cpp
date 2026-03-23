@@ -387,28 +387,100 @@ Entity SceneLoader::traverseUsdPrim(
 
 	// Check if this prim has geometry
 	if (isUsdGeometry(prim)) {
-		uint32_t meshID = createMeshFromUsdGeom(prim, renderSystem);
+		// Check for GeomSubsets (multi-material meshes)
+		if (prim.IsA<UsdGeomMesh>()) {
+			UsdGeomMesh mesh(prim);
+			std::vector<UsdGeomSubset> subsets =
+			    UsdGeomSubset::GetGeomSubsets(mesh);
 
-		MeshRenderer renderer;
-		renderer.meshID = meshID;
-		world.addComponent(entity, renderer);
+			if (!subsets.empty()) {
+				// Mesh has subsets - create child entities for each subset
+				std::cout << "  Mesh " << prim.GetPath() << " has "
+				          << subsets.size()
+				          << " subsets, creating child entities" << std::endl;
 
-		// Bind material
-		MaterialBinding binding;
-		binding.materialID = 0;  // Default
+				for (const UsdGeomSubset& subset : subsets) {
+					// Create child entity for this subset
+					Entity subsetEntity = world.createEntity();
 
-		UsdShadeMaterialBindingAPI bindingAPI(prim);
-		UsdShadeMaterial boundMaterial = bindingAPI.ComputeBoundMaterial();
+					// Child inherits parent's transform (identity local
+					// transform)
+					Transform childTransform;
+					world.addComponent(subsetEntity, childTransform);
+					world.setParent(subsetEntity, entity);
 
-		if (boundMaterial) {
-			SdfPath materialPath = boundMaterial.GetPath();
-			auto it = materialMap.find(materialPath);
-			if (it != materialMap.end()) {
-				binding.materialID = it->second;
+					// Extract mesh for this subset only
+					uint32_t meshID =
+					    createMeshFromUsdGeomSubset(prim, subset, renderSystem);
+
+					MeshRenderer renderer;
+					renderer.meshID = meshID;
+					world.addComponent(subsetEntity, renderer);
+
+					// Bind material from subset
+					MaterialBinding binding;
+					binding.materialID = 0;  // Default
+
+					UsdShadeMaterialBindingAPI subsetBindingAPI(
+					    subset.GetPrim());
+					UsdShadeMaterial boundMaterial =
+					    subsetBindingAPI.ComputeBoundMaterial();
+
+					if (boundMaterial) {
+						SdfPath materialPath = boundMaterial.GetPath();
+						auto it = materialMap.find(materialPath);
+						if (it != materialMap.end()) {
+							binding.materialID = it->second;
+							std::cout << "    Subset " << subset.GetPath()
+							          << " -> Material ID "
+							          << binding.materialID << std::endl;
+						} else {
+							std::cout << "    Subset " << subset.GetPath()
+							          << " -> Material " << materialPath
+							          << " NOT FOUND" << std::endl;
+						}
+					}
+
+					world.addComponent(subsetEntity, binding);
+				}
+			} else {
+				// No subsets, handle as single mesh (old code path)
+				uint32_t meshID = createMeshFromUsdGeom(prim, renderSystem);
+
+				MeshRenderer renderer;
+				renderer.meshID = meshID;
+				world.addComponent(entity, renderer);
+
+				// Try to bind material
+				MaterialBinding binding;
+				binding.materialID = 0;
+
+				UsdShadeMaterialBindingAPI bindingAPI(prim);
+				UsdShadeMaterial boundMaterial =
+				    bindingAPI.ComputeBoundMaterial();
+
+				if (boundMaterial) {
+					SdfPath materialPath = boundMaterial.GetPath();
+					auto it = materialMap.find(materialPath);
+					if (it != materialMap.end()) {
+						binding.materialID = it->second;
+					}
+				}
+
+				world.addComponent(entity, binding);
 			}
-		}
+		} else {
+			// Non-mesh geometry (Cube, Sphere, etc.)
+			uint32_t meshID = createMeshFromUsdGeom(prim, renderSystem);
 
-		world.addComponent(entity, binding);
+			MeshRenderer renderer;
+			renderer.meshID = meshID;
+			world.addComponent(entity, renderer);
+
+			MaterialBinding binding;
+			binding.materialID = 0;
+			world.addComponent(entity, binding);
+		}
 	}
 
 	// Recurse to children
@@ -464,128 +536,163 @@ bool SceneLoader::isUsdGeometry(const UsdPrim& prim) {
 	       prim.IsA<UsdGeomCylinder>();
 }
 
-uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
-                                            RenderSystem& renderSystem) {
-	// Handle schema primitives (Cube, Sphere, Cone, Cylinder)
-	if (prim.IsA<UsdGeomCube>()) {
-		return 0;  // Cube mesh ID
-	} else if (prim.IsA<UsdGeomSphere>()) {
-		return 1;  // Sphere mesh ID
-	} else if (prim.IsA<UsdGeomCone>()) {
-		return 2;  // Cone mesh ID
-	} else if (prim.IsA<UsdGeomCylinder>()) {
-		return 3;  // Cylinder mesh ID
+namespace {
+
+struct UsdMeshData {
+	VtArray<GfVec3f> points;
+	VtArray<GfVec3f> normals;
+	bool hasNormals = false;
+	TfToken normalInterpolation;
+	VtArray<GfVec2f> uvs;
+	bool hasUVs = false;
+	TfToken uvInterpolation;
+	VtArray<int> faceVertexCounts;
+	VtArray<int> faceVertexIndices;
+};
+
+UsdMeshData loadUsdMeshData(const UsdGeomMesh& mesh) {
+	UsdMeshData data;
+
+	mesh.GetPointsAttr().Get(&data.points);
+
+	data.hasNormals = mesh.GetNormalsAttr().Get(&data.normals);
+	data.normalInterpolation =
+	    data.hasNormals ? mesh.GetNormalsInterpolation() : UsdGeomTokens->vertex;
+
+	UsdGeomPrimvarsAPI primvarsAPI(mesh.GetPrim());
+	const TfToken uvNames[] = {TfToken("st"), TfToken("uv"), TfToken("UVMap")};
+	for (const TfToken& uvName : uvNames) {
+		UsdGeomPrimvar uvPrimvar = primvarsAPI.GetPrimvar(uvName);
+		if (uvPrimvar && uvPrimvar.HasValue() &&
+		    uvPrimvar.ComputeFlattened(&data.uvs)) {
+			data.hasUVs = true;
+			data.uvInterpolation = uvPrimvar.GetInterpolation();
+			std::cout << "  Found UVs as '" << uvName << "' with "
+			          << data.uvInterpolation << " interpolation" << std::endl;
+			break;
+		}
 	}
 
-	// Handle UsdGeomMesh
+	mesh.GetFaceVertexCountsAttr().Get(&data.faceVertexCounts);
+	mesh.GetFaceVertexIndicesAttr().Get(&data.faceVertexIndices);
+
+	return data;
+}
+
+Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx, int vertexIndex) {
+	Vertex v;
+	v.color = glm::vec3(1.0f);
+
+	v.position = glm::vec3(data.points[vertexIndex][0],
+	                       data.points[vertexIndex][1],
+	                       data.points[vertexIndex][2]);
+
+	if (data.hasNormals) {
+		const int normalIdx =
+		    (data.normalInterpolation == UsdGeomTokens->faceVarying)
+		        ? faceVertexIdx
+		        : vertexIndex;
+		if (normalIdx < (int)data.normals.size()) {
+			v.normal = glm::vec3(data.normals[normalIdx][0],
+			                     data.normals[normalIdx][1],
+			                     data.normals[normalIdx][2]);
+		} else {
+			v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+		}
+	} else {
+		v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+	}
+
+	if (data.hasUVs) {
+		const int uvIdx =
+		    (data.uvInterpolation == UsdGeomTokens->faceVarying) ? faceVertexIdx
+		                                                          : vertexIndex;
+		if (uvIdx < (int)data.uvs.size()) {
+			v.uv = glm::vec2(data.uvs[uvIdx][0], data.uvs[uvIdx][1]);
+		} else {
+			v.uv = glm::vec2(0.0f, 0.0f);
+		}
+	} else {
+		v.uv = glm::vec2(0.0f, 0.0f);
+	}
+
+	return v;
+}
+
+void triangulateFaces(const UsdMeshData& data, const VtArray<int>& faceIndices,
+                      std::vector<Vertex>& outVertices,
+                      std::vector<uint32_t>& outIndices) {
+	// Pre-compute face start offsets
+	std::vector<size_t> faceStartOffsets(data.faceVertexCounts.size());
+	size_t offset = 0;
+	for (size_t i = 0; i < data.faceVertexCounts.size(); ++i) {
+		faceStartOffsets[i] = offset;
+		offset += data.faceVertexCounts[i];
+	}
+
+	for (int faceIdx : faceIndices) {
+		if (faceIdx >= (int)data.faceVertexCounts.size()) continue;
+
+		const size_t faceStart = faceStartOffsets[faceIdx];
+		const int faceVertexCount = data.faceVertexCounts[faceIdx];
+		if (faceVertexCount < 3) continue;
+
+		// Fan triangulation
+		for (int tri = 0; tri < faceVertexCount - 2; ++tri) {
+			const int localIndices[3] = {0, tri + 1, tri + 2};
+			for (int i = 0; i < 3; ++i) {
+				const int faceVertexIdx = (int)(faceStart + localIndices[i]);
+				const int vertexIndex = data.faceVertexIndices[faceVertexIdx];
+				outIndices.push_back((uint32_t)outVertices.size());
+				outVertices.push_back(
+				    buildVertex(data, faceVertexIdx, vertexIndex));
+			}
+		}
+	}
+}
+
+}  // namespace
+
+uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
+                                            RenderSystem& renderSystem) {
+	if (prim.IsA<UsdGeomCube>()) return 0;
+	if (prim.IsA<UsdGeomSphere>()) return 1;
+	if (prim.IsA<UsdGeomCone>()) return 2;
+	if (prim.IsA<UsdGeomCylinder>()) return 3;
+
 	if (!prim.IsA<UsdGeomMesh>()) {
 		std::cerr << "Prim is not a mesh: " << prim.GetPath() << std::endl;
 		return 0;
 	}
 
-	UsdGeomMesh mesh(prim);
+	const UsdMeshData data = loadUsdMeshData(UsdGeomMesh(prim));
 
-	// Get vertices
-	UsdAttribute pointsAttr = mesh.GetPointsAttr();
-	VtArray<GfVec3f> points;
-	pointsAttr.Get(&points);
+	VtArray<int> faceIndices;
+	faceIndices.resize(data.faceVertexCounts.size());
+	for (size_t i = 0; i < faceIndices.size(); ++i) faceIndices[i] = (int)i;
 
-	// Get normals
-	UsdAttribute normalsAttr = mesh.GetNormalsAttr();
-	VtArray<GfVec3f> normals;
-	bool hasNormals = normalsAttr.Get(&normals);
-
-	// Get UVs using UsdGeomPrimvarsAPI (USD 26.3 API)
-	UsdGeomPrimvarsAPI primvarsAPI(prim);
-	VtArray<GfVec2f> uvs;
-	bool hasUVs = false;
-
-	// Try standard USD primvar names in order of preference
-	std::vector<TfToken> uvNames = {
-	    TfToken("st"),    // Standard USD texture coordinates
-	    TfToken("uv"),    // Common alternative
-	    TfToken("UVMap")  // Blender/other DCCs
-	};
-
-	for (const TfToken& uvName : uvNames) {
-		UsdGeomPrimvar uvPrimvar = primvarsAPI.GetPrimvar(uvName);
-		if (uvPrimvar && uvPrimvar.HasValue()) {
-			if (uvPrimvar.Get(&uvs)) {
-				hasUVs = true;
-				std::cout << "  Found UVs as '" << uvName << "'" << std::endl;
-				break;
-			}
-		}
-	}
-
-	// Get face vertex counts and indices
-	UsdAttribute faceVertexCountsAttr = mesh.GetFaceVertexCountsAttr();
-	UsdAttribute faceVertexIndicesAttr = mesh.GetFaceVertexIndicesAttr();
-
-	VtArray<int> faceVertexCounts;
-	VtArray<int> faceVertexIndices;
-
-	faceVertexCountsAttr.Get(&faceVertexCounts);
-	faceVertexIndicesAttr.Get(&faceVertexIndices);
-
-	// Build vertex buffer
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
-
-	// Triangulate and build vertices
-	size_t indexOffset = 0;
-	for (int faceVertexCount : faceVertexCounts) {
-		if (faceVertexCount < 3) {
-			std::cerr << "Invalid face with " << faceVertexCount << " vertices"
-			          << std::endl;
-			indexOffset += faceVertexCount;
-			continue;
-		}
-
-		// Fan triangulation: for n vertices, create (n-2) triangles
-		// All triangles share vertex 0, then connect consecutive pairs
-		// Example: pentagon (0,1,2,3,4) -> triangles (0,1,2), (0,2,3), (0,3,4)
-
-		for (int tri = 0; tri < faceVertexCount - 2; ++tri) {
-			// Triangle vertices: 0, tri+1, tri+2
-			int localIndices[3] = {0, tri + 1, tri + 2};
-
-			for (int i = 0; i < 3; ++i) {
-				int vertexIndex =
-				    faceVertexIndices[indexOffset + localIndices[i]];
-
-				Vertex v;
-				v.position =
-				    glm::vec3(points[vertexIndex][0], points[vertexIndex][1],
-				              points[vertexIndex][2]);
-
-				if (hasNormals && vertexIndex < normals.size()) {
-					v.normal = glm::vec3(normals[vertexIndex][0],
-					                     normals[vertexIndex][1],
-					                     normals[vertexIndex][2]);
-				} else {
-					v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-				}
-
-				if (hasUVs && vertexIndex < uvs.size()) {
-					v.uv = glm::vec2(uvs[vertexIndex][0], uvs[vertexIndex][1]);
-				} else {
-					v.uv = glm::vec2(0.0f, 0.0f);
-				}
-
-				v.color = glm::vec3(1.0f);
-
-				indices.push_back(static_cast<uint32_t>(vertices.size()));
-				vertices.push_back(v);
-			}
-		}
-
-		indexOffset += faceVertexCount;
-	}
+	triangulateFaces(data, faceIndices, vertices, indices);
 
 	std::cout << "  Loaded mesh: " << prim.GetPath() << " (" << vertices.size()
 	          << " vertices, " << indices.size() / 3 << " triangles, "
-	          << (hasUVs ? "has UVs" : "NO UVs") << ")" << std::endl;
+	          << (data.hasUVs ? "has UVs" : "NO UVs") << ")" << std::endl;
+
+	return renderSystem.uploadMesh(vertices, indices);
+}
+
+uint32_t SceneLoader::createMeshFromUsdGeomSubset(const UsdPrim& meshPrim,
+                                                  const UsdGeomSubset& subset,
+                                                  RenderSystem& renderSystem) {
+	const UsdMeshData data = loadUsdMeshData(UsdGeomMesh(meshPrim));
+
+	VtArray<int> subsetFaceIndices;
+	subset.GetIndicesAttr().Get(&subsetFaceIndices);
+
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+	triangulateFaces(data, subsetFaceIndices, vertices, indices);
 
 	return renderSystem.uploadMesh(vertices, indices);
 }

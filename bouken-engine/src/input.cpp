@@ -20,8 +20,9 @@ void Input::initialize(IInputBackend* backend) {
 	mapKeyToAction(65, InputAction::MoveLeft);             // A
 	mapKeyToAction(68, InputAction::MoveRight);            // D
 	mapKeyToAction(32, InputAction::MoveUp);               // Space
-	mapKeyToAction(340, InputAction::MoveDown);            // Left Shift
+	mapKeyToAction(341, InputAction::MoveDown);            // Left Ctrl
 	mapKeyToAction(256, InputAction::ToggleMouseCapture);  // Escape
+	mapKeyToAction(340, InputAction::Sprint);              // Left Shift
 }
 
 void Input::shutdown() {

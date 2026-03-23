@@ -5,7 +5,7 @@
 struct Camera {
 	float fov = 45.0f;
 	float nearPlane = 0.1f;
-	float farPlane = 100.0f;
+	float farPlane = 10000.0f;
 
 	glm::mat4 getProjectionMatrix(float aspectRatio) const {
 		glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio,

@@ -50,8 +50,6 @@ class SceneLoader {
 	                                          MaterialManager& materialManager,
 	                                          TextureManager& textureManager,
 	                                          const std::string& sceneDir);
-
-	// TODO
 	static std::string resolveInputTexturePath(const UsdShadeInput& input,
 	                                           const std::string& sceneDir);
 	static std::string extractTextureFromShader(const UsdShadeShader& shader,
@@ -66,4 +64,7 @@ class SceneLoader {
 	static bool isUsdGeometry(const UsdPrim& prim);
 	static uint32_t createMeshFromUsdGeom(const UsdPrim& prim,
 	                                      RenderSystem& renderSystem);
+	static uint32_t createMeshFromUsdGeomSubset(const UsdPrim& meshPrim,
+	                                            const UsdGeomSubset& subset,
+	                                            RenderSystem& renderSystem);
 };

@@ -186,8 +186,7 @@ void RenderSystem::createMaterialDescriptorSets(
 	uint32_t defaultNormalID = textureManager.getDefaultNormalTextureID();
 
 	// Iterate through all materials
-	for (uint32_t matID = 0; matID < materialManager.getMaterialCount() + 1;
-	     ++matID) {
+	for (uint32_t matID = 0; matID <= 200; ++matID) {
 		if (!materialManager.hasMaterial(matID)) {
 			continue;
 		}

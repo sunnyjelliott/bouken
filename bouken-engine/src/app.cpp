@@ -71,7 +71,7 @@ void Application::initScene() {
 	                     Transform{.position = glm::vec3(0.0f, 2.0f, 8.0f)});
 	m_world.addComponent(
 	    m_activeCamera,
-	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 100.0f});
+	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 10000.0f});
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	m_cameraSystem.setActiveCamera(m_activeCamera);
@@ -107,7 +107,8 @@ void Application::mainLoop() {
 		    Input::isActionHeld(InputAction::MoveLeft),
 		    Input::isActionHeld(InputAction::MoveRight),
 		    Input::getActionValue(InputAction::LookHorizontal),
-		    Input::getActionValue(InputAction::LookVertical));
+		    Input::getActionValue(InputAction::LookVertical),
+		    Input::isActionHeld(InputAction::Sprint));
 
 		Input::update();
 
