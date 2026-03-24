@@ -52,15 +52,10 @@ class SceneLoader {
 	    const UsdStageRefPtr& stage, MaterialManager& materialManager,
 	    TextureManager& textureManager, const std::string& sceneDir,
 	    std::unordered_map<SdfPath, uint32_t, SdfPath::Hash>& materialMap);
-	static uint32_t extractMaterialFromShader(const UsdShadeShader& shader,
-	                                          MaterialManager& materialManager,
-	                                          TextureManager& textureManager,
-	                                          const std::string& sceneDir);
 	static std::string resolveInputTexturePath(const UsdShadeInput& input,
 	                                           const std::string& sceneDir);
 	static std::string extractTextureFromShader(const UsdShadeShader& shader,
 	                                            const std::string& sceneDir);
-
 	static MaterialTextureInfo extractMaterialTextureInfo(
 	    const UsdShadeShader& shader, const std::string& sceneDir);
 
