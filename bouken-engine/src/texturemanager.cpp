@@ -20,58 +20,95 @@ void TextureManager::cleanup() {
 }
 
 uint32_t TextureManager::loadTexture(const std::string& filepath) {
-	// Check if already loaded (deduplication)
-	auto it = m_pathToID.find(filepath);
-	if (it != m_pathToID.end()) {
-		std::cout << "Texture already loaded: " << filepath
-		          << " (ID: " << it->second << ")" << std::endl;
-		return it->second;
+	// Single texture - use batch with size 1
+	std::vector<std::string> paths = {filepath};
+	std::vector<uint32_t> results = loadTexturesBatch(paths);
+	return results.empty() ? 0 : results[0];
+}
+
+std::vector<uint32_t> TextureManager::loadTexturesBatch(
+    const std::vector<std::string>& filepaths) {
+	auto startTime = std::chrono::high_resolution_clock::now();
+
+	std::cout << "Batch loading " << filepaths.size() << " textures..."
+	          << std::endl;
+
+	// Filter out already-loaded textures
+	std::vector<std::string> pathsToLoad;
+	std::vector<uint32_t> results(filepaths.size(), 0);
+
+	for (size_t i = 0; i < filepaths.size(); ++i) {
+		auto it = m_pathToID.find(filepaths[i]);
+		if (it != m_pathToID.end()) {
+			// Already loaded
+			results[i] = it->second;
+		} else {
+			pathsToLoad.push_back(filepaths[i]);
+		}
 	}
 
-	// Load image data
-	int width, height, channels;
-	stbi_uc* pixels =
-	    stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
-	if (!pixels) {
-		std::cerr << "Failed to load texture: " << filepath << std::endl;
-		return 0;  // no texture id
+	if (pathsToLoad.empty()) {
+		std::cout << "All textures already loaded (cached)" << std::endl;
+		return results;
 	}
 
-	// Create texture via backend
-	TextureCreateInfo createInfo;
-	createInfo.pixels = pixels;
-	createInfo.width = static_cast<uint32_t>(width);
-	createInfo.height = static_cast<uint32_t>(height);
-	createInfo.channels = 4;  // forced RGBA with STBI_rgb_alpha
-	createInfo.generateMipmaps = false;
+	std::cout << "  Decoding " << pathsToLoad.size() << " new textures on "
+	          << std::thread::hardware_concurrency() << " threads..."
+	          << std::endl;
 
-	BackendTextureHandle backendHandle = m_backend->createTexture(createInfo);
+	// Phase 1: Decode images in parallel on CPU
+	std::vector<std::future<DecodedImage>> futures;
+	futures.reserve(pathsToLoad.size());
 
-	stbi_image_free(pixels);
-
-	if (!backendHandle) {
-		std::cerr << "Backend failed to create texture: " << filepath
-		          << std::endl;
-		return 0;
+	for (const std::string& path : pathsToLoad) {
+		futures.push_back(std::async(std::launch::async, decodeImage, path));
 	}
 
-	// Store metadata
-	uint32_t textureID = m_nextID++;
-	TextureMetadata metadata;
-	metadata.filepath = filepath;
-	metadata.width = createInfo.width;
-	metadata.height = createInfo.height;
-	metadata.backendHandle = backendHandle;
+	// Wait for all decodes to complete
+	std::vector<DecodedImage> decodedImages;
+	decodedImages.reserve(pathsToLoad.size());
 
-	m_textures[textureID] = metadata;
-	m_pathToID[filepath] = textureID;
+	for (auto& future : futures) {
+		decodedImages.push_back(future.get());
+	}
 
-	std::cout << "Loaded texture: " << filepath << " (" << width << "x"
-	          << height << ")"
-	          << " ID: " << textureID << std::endl;
+	auto decodeTime = std::chrono::high_resolution_clock::now();
+	auto decodeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+	    decodeTime - startTime);
+	std::cout << "  Decoded in " << decodeDuration.count() << "ms" << std::endl;
 
-	return textureID;
+	// Phase 2: Upload to GPU sequentially (Vulkan requires single-threaded)
+	std::cout << "  Uploading to GPU..." << std::endl;
+
+	size_t newTextureIdx = 0;
+	for (size_t i = 0; i < filepaths.size(); ++i) {
+		if (results[i] == 0) {
+			// This was a new texture
+			uint32_t textureID =
+			    uploadDecodedImage(decodedImages[newTextureIdx]);
+			results[i] = textureID;
+
+			// Free decoded pixel data
+			if (decodedImages[newTextureIdx].pixels) {
+				stbi_image_free(decodedImages[newTextureIdx].pixels);
+			}
+
+			newTextureIdx++;
+		}
+	}
+
+	auto endTime = std::chrono::high_resolution_clock::now();
+	auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+	    endTime - startTime);
+	auto uploadDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+	    endTime - decodeTime);
+
+	std::cout << "  Uploaded in " << uploadDuration.count() << "ms"
+	          << std::endl;
+	std::cout << "Batch load complete: " << totalDuration.count() << "ms total"
+	          << std::endl;
+
+	return results;
 }
 
 void* TextureManager::getBindingData(uint32_t textureID) const {
@@ -85,6 +122,59 @@ void* TextureManager::getBindingData(uint32_t textureID) const {
 
 bool TextureManager::hasTexture(uint32_t textureID) const {
 	return m_textures.find(textureID) != m_textures.end();
+}
+
+DecodedImage TextureManager::decodeImage(const std::string& filepath) {
+	DecodedImage result;
+	result.filepath = filepath;
+
+	result.pixels = stbi_load(filepath.c_str(), &result.width, &result.height,
+	                          &result.channels, STBI_rgb_alpha);
+
+	if (result.pixels) {
+		result.success = true;
+		result.channels = 4;  // force RGBA
+	} else {
+		result.success = false;
+		std::cerr << "Failed to decode texture: " << filepath << std::endl;
+	}
+
+	return result;
+}
+
+uint32_t TextureManager::uploadDecodedImage(const DecodedImage& decoded) {
+	if (!decoded.success || !decoded.pixels) {
+		return 0;
+	}
+
+	// Create texture via backend
+	TextureCreateInfo createInfo;
+	createInfo.pixels = decoded.pixels;
+	createInfo.width = static_cast<uint32_t>(decoded.width);
+	createInfo.height = static_cast<uint32_t>(decoded.height);
+	createInfo.channels = 4;
+	createInfo.generateMipmaps = false;
+
+	BackendTextureHandle backendHandle = m_backend->createTexture(createInfo);
+
+	if (!backendHandle) {
+		std::cerr << "Backend failed to create texture: " << decoded.filepath
+		          << std::endl;
+		return 0;
+	}
+
+	// Store metadata
+	uint32_t textureID = m_nextID++;
+	TextureMetadata metadata;
+	metadata.filepath = decoded.filepath;
+	metadata.width = createInfo.width;
+	metadata.height = createInfo.height;
+	metadata.backendHandle = backendHandle;
+
+	m_textures[textureID] = metadata;
+	m_pathToID[decoded.filepath] = textureID;
+
+	return textureID;
 }
 
 void TextureManager::createDefaultTextures() {

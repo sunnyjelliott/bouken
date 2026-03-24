@@ -31,6 +31,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -39,6 +40,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>

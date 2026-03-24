@@ -27,6 +27,8 @@ class RenderSystem {
 	uint32_t uploadMesh(const std::vector<Vertex>& vertices,
 	                    const std::vector<uint32_t>& indices);
 
+	void flushMeshUploads();
+
 	void createMaterialDescriptorSets(MaterialManager& materialManager,
 	                                  TextureManager& textureManager);
 

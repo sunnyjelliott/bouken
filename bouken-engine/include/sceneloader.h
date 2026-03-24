@@ -19,6 +19,12 @@ struct SceneLoadOptions {
 	Entity parentEntity = NULL_ENTITY;
 };
 
+struct MaterialTextureInfo {
+	std::string albedoPath;
+	std::string normalPath;
+	glm::vec3 baseColor = glm::vec3(0.8f);
+};
+
 class SceneLoader {
    public:
 	static bool loadScene(const std::string& filepath, World& world,
@@ -54,6 +60,9 @@ class SceneLoader {
 	                                           const std::string& sceneDir);
 	static std::string extractTextureFromShader(const UsdShadeShader& shader,
 	                                            const std::string& sceneDir);
+
+	static MaterialTextureInfo extractMaterialTextureInfo(
+	    const UsdShadeShader& shader, const std::string& sceneDir);
 
 	// USD Geometry
 	static Entity traverseUsdPrim(

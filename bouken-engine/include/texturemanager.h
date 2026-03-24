@@ -3,12 +3,25 @@
 
 class ITextureBackend;
 
+struct DecodedImage {
+	std::string filepath;
+	unsigned char* pixels = nullptr;
+	int width = 0;
+	int height = 0;
+	int channels = 0;
+	bool success = false;
+};
+
 class TextureManager {
    public:
 	void initialize(ITextureBackend* backend);
 	void cleanup();
 
 	uint32_t loadTexture(const std::string& filepath);
+
+	std::vector<uint32_t> loadTexturesBatch(
+	    const std::vector<std::string>& filepaths);
+
 	void* getBindingData(uint32_t textureID) const;
 	bool hasTexture(uint32_t textureID) const;
 
@@ -36,6 +49,9 @@ class TextureManager {
 
 	uint32_t m_defaultWhiteTextureID = 0;
 	uint32_t m_defaultNormalTextureID = 0;
+
+	static DecodedImage decodeImage(const std::string& filepath);
+	uint32_t uploadDecodedImage(const DecodedImage& decoded);
 
 	void createDefaultTextures();
 };

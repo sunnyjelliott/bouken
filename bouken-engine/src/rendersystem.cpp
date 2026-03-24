@@ -170,10 +170,13 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	m_allVertices.insert(m_allVertices.end(), vertices.begin(), vertices.end());
 	m_allIndices.insert(m_allIndices.end(), indices.begin(), indices.end());
 
-	// Re-upload all mesh data to GPU
-	uploadMeshData(m_allVertices, m_allIndices);
-
 	return meshID;
+}
+
+void RenderSystem::flushMeshUploads() {
+	if (!m_allVertices.empty() && !m_allIndices.empty()) {
+		uploadMeshData(m_allVertices, m_allIndices);
+	}
 }
 
 void RenderSystem::createMaterialDescriptorSets(
@@ -636,22 +639,6 @@ void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
 		throw std::runtime_error("Failed to create vertex buffer!");
 	}
 
-	// Copy from staging to device buffer
-	VkCommandBuffer commandBuffer = m_context->beginSingleTimeCommands();
-
-	VkBufferCopy vertexCopyRegion{};
-	vertexCopyRegion.srcOffset = 0;
-	vertexCopyRegion.dstOffset = 0;
-	vertexCopyRegion.size = vertexBufferSize;
-	vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer, m_vertexBuffer, 1,
-	                &vertexCopyRegion);
-
-	m_context->endSingleTimeCommands(commandBuffer);
-
-	// Clean up staging buffer
-	vmaDestroyBuffer(m_context->getAllocator(), vertexStagingBuffer,
-	                 vertexStagingAllocation);
-
 	// === INDEX BUFFER ===
 
 	// Create staging buffer
@@ -700,19 +687,23 @@ void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
 		throw std::runtime_error("Failed to create index buffer!");
 	}
 
-	// Copy from staging to device buffer
-	commandBuffer = m_context->beginSingleTimeCommands();
+	// Copy both buffers in a single command submission
+	VkCommandBuffer commandBuffer = m_context->beginSingleTimeCommands();
+
+	VkBufferCopy vertexCopyRegion{};
+	vertexCopyRegion.size = vertexBufferSize;
+	vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer, m_vertexBuffer, 1,
+	                &vertexCopyRegion);
 
 	VkBufferCopy indexCopyRegion{};
-	indexCopyRegion.srcOffset = 0;
-	indexCopyRegion.dstOffset = 0;
 	indexCopyRegion.size = indexBufferSize;
 	vkCmdCopyBuffer(commandBuffer, indexStagingBuffer, m_indexBuffer, 1,
 	                &indexCopyRegion);
 
 	m_context->endSingleTimeCommands(commandBuffer);
 
-	// Clean up staging buffer
+	vmaDestroyBuffer(m_context->getAllocator(), vertexStagingBuffer,
+	                 vertexStagingAllocation);
 	vmaDestroyBuffer(m_context->getAllocator(), indexStagingBuffer,
 	                 indexStagingAllocation);
 }
