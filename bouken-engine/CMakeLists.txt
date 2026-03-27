@@ -189,7 +189,7 @@ set(USD_LIBS
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-file(GLOB SOURCES src/*)
+file(GLOB_RECURSE SOURCES src/*)
 add_executable(${PROJECT_NAME} 
     ${SOURCES}
 )
@@ -211,7 +211,14 @@ file(MAKE_DIRECTORY ${SHADER_BINARY_DIR})
 
 set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.vert
+    ${SHADER_SOURCE_DIR}/depth.vert
+    ${SHADER_SOURCE_DIR}/fullscreen.vert
+    ${SHADER_SOURCE_DIR}/geometry.vert
+
     ${SHADER_SOURCE_DIR}/shader.frag
+    ${SHADER_SOURCE_DIR}/geometry.frag
+    ${SHADER_SOURCE_DIR}/lighting.frag
+    ${SHADER_SOURCE_DIR}/tonemap.frag
 )
 
 foreach(SHADER ${SHADERS})
@@ -258,6 +265,7 @@ target_sources(BoukenEngine PRIVATE
 )
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include
+    include/render
     ${stb_SOURCE_DIR}
     ${mikktspace_SOURCE_DIR}
 )
@@ -271,5 +279,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${USD_LIBS}
 )
 
-target_precompile_headers(${PROJECT_NAME} PRIVATE include/pch.h)
+target_precompile_headers(BoukenEngine PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h>"
+)
 target_compile_definitions(${PROJECT_NAME} PRIVATE PXR_ENABLE_PYTHON=0)

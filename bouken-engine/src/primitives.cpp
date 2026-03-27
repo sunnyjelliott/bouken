@@ -5,113 +5,137 @@ PrimitiveGeometry Primitives::createCube(float size) {
 	float half = size * 0.5f;
 
 	geom.vertices = {
-	    // Front face (Z+)
+	    // Front face (Z+) — tangent along X+
 	    {{-0.5f, -0.5f, 0.5f},
 	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, -0.5f, 0.5f},
 	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, 0.5f},
 	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, 0.5f, 0.5f},
 	     {0.0f, 0.0f, 1.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 
-	    // Back face (Z-)
+	    // Back face (Z-) — tangent along X-
 	    {{0.5f, -0.5f, -0.5f},
 	     {0.0f, 0.0f, -1.0f},
+	     {-1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, -0.5f, -0.5f},
 	     {0.0f, 0.0f, -1.0f},
+	     {-1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, 0.5f, -0.5f},
 	     {0.0f, 0.0f, -1.0f},
+	     {-1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, -0.5f},
 	     {0.0f, 0.0f, -1.0f},
+	     {-1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 
-	    // Top face (Y+)
+	    // Top face (Y+) — tangent along X+
 	    {{-0.5f, 0.5f, 0.5f},
 	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, 0.5f},
 	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, -0.5f},
 	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, 0.5f, -0.5f},
 	     {0.0f, 1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 
-	    // Bottom face (Y-)
+	    // Bottom face (Y-) — tangent along X+
 	    {{-0.5f, -0.5f, -0.5f},
 	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, -0.5f, -0.5f},
 	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, -0.5f, 0.5f},
 	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, -0.5f, 0.5f},
 	     {0.0f, -1.0f, 0.0f},
+	     {1.0f, 0.0f, 0.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 
-	    // Right face (X+)
+	    // Right face (X+) — tangent along Z-
 	    {{0.5f, -0.5f, 0.5f},
 	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, -1.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, -0.5f, -0.5f},
 	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, -1.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, -0.5f},
 	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, -1.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{0.5f, 0.5f, 0.5f},
 	     {1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, -1.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 
-	    // Left face (X-)
+	    // Left face (X-) — tangent along Z+
 	    {{-0.5f, -0.5f, -0.5f},
 	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, 1.0f, 1.0f},
 	     {0.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, -0.5f, 0.5f},
 	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, 1.0f, 1.0f},
 	     {1.0f, 0.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, 0.5f, 0.5f},
 	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, 1.0f, 1.0f},
 	     {1.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	    {{-0.5f, 0.5f, -0.5f},
 	     {-1.0f, 0.0f, 0.0f},
+	     {0.0f, 0.0f, 1.0f, 1.0f},
 	     {0.0f, 1.0f},
-	     {1.0f, 1.0f, 1.0f}},
+	     {1.0f, 1.0f, 1.0f, 1.0f}},
 	};
 
 	geom.indices = {
@@ -144,10 +168,11 @@ PrimitiveGeometry Primitives::createSphere(float radius, int rings,
 			Vertex v;
 			v.position = glm::vec3(x, y, z);
 			v.normal = glm::normalize(v.position);
+			v.tangent = glm::vec4(-sin(theta), 0.0f, cos(theta), 1.0f);
 			v.uv = {(float)segment / segments, (float)ring / rings};
 			// Color based on height (gradient from bottom to top)
 			float t = (y + radius) / (2.0f * radius);
-			v.color = glm::vec3(t, 0.5f, 1.0f - t);
+			v.color = glm::vec4(t, 0.5f, 1.0f - t, 1.0f);
 			geom.vertices.push_back(v);
 		}
 	}
@@ -179,9 +204,9 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 
 	// --- Side face vertices ---
 
-	// Apex (index 0)
+	// Apex (index 0) — degenerate tangent
 	geom.vertices.push_back(
-	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f}, {1.0f, 1.0f, 0.0f}});
+	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.5f, 1.0f}, {1.0f, 1.0f, 0.0f, 1.0f}});
 
 	// Base ring for sides (indices 1..segments+1)
 	// Outward-perpendicular to the lateral surface: normalize(height*cos,
@@ -192,8 +217,9 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 		float z = radius * sin(theta);
 		glm::vec3 sideNormal = glm::normalize(
 		    glm::vec3(height * cos(theta), radius, height * sin(theta)));
+		glm::vec4 sideTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, -halfHeight, z}, sideNormal, {(float)i / segments, 0.0f}, {1.0f, 1.0f, 1.0f}});
+		    {{x, -halfHeight, z}, sideNormal, sideTangent, {(float)i / segments, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}});
 	}
 
 	// Side triangles (apex to base edge)
@@ -207,15 +233,16 @@ PrimitiveGeometry Primitives::createCone(float radius, float height,
 
 	uint32_t baseCenterIdx = static_cast<uint32_t>(geom.vertices.size());
 	geom.vertices.push_back(
-	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}});
+	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}});
 
 	uint32_t baseRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
+		glm::vec4 capTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {1.0f, 1.0f, 1.0f}});
+		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, capTangent, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {1.0f, 1.0f, 1.0f, 1.0f}});
 	}
 
 	// Base triangles (base center to base edge, reversed winding)
@@ -237,15 +264,16 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 
 	uint32_t topCenter = static_cast<uint32_t>(geom.vertices.size());
 	geom.vertices.push_back(
-	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 0.5f}, {0.5f, 1.0f, 0.5f}});
+	    {{0.0f, halfHeight, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.5f, 0.5f}, {0.5f, 1.0f, 0.5f, 1.0f}});
 
 	uint32_t topCapRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
+		glm::vec4 capTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, halfHeight, z}, {0.0f, 1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 1.0f, 0.5f}});
+		    {{x, halfHeight, z}, {0.0f, 1.0f, 0.0f}, capTangent, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 1.0f, 0.5f, 1.0f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -258,15 +286,16 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 
 	uint32_t bottomCenter = static_cast<uint32_t>(geom.vertices.size());
 	geom.vertices.push_back(
-	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}, {0.5f, 0.0f, 0.5f}});
+	    {{0.0f, -halfHeight, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.5f, 0.5f}, {0.5f, 0.0f, 0.5f, 1.0f}});
 
 	uint32_t bottomCapRingStart = static_cast<uint32_t>(geom.vertices.size());
 	for (int i = 0; i <= segments; i++) {
 		float theta = 2.0f * glm::pi<float>() * i / segments;
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
+		glm::vec4 capTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 0.0f, 0.5f}});
+		    {{x, -halfHeight, z}, {0.0f, -1.0f, 0.0f}, capTangent, {0.5f + 0.5f * cos(theta), 0.5f + 0.5f * sin(theta)}, {0.5f, 0.0f, 0.5f, 1.0f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -283,8 +312,9 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
 		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
+		glm::vec4 sideTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, halfHeight, z}, outward, {(float)i / segments, 1.0f}, {0.5f, 1.0f, 0.5f}});
+		    {{x, halfHeight, z}, outward, sideTangent, {(float)i / segments, 1.0f}, {0.5f, 1.0f, 0.5f, 1.0f}});
 	}
 
 	uint32_t sideBottomStart = static_cast<uint32_t>(geom.vertices.size());
@@ -293,8 +323,9 @@ PrimitiveGeometry Primitives::createCylinder(float radius, float height,
 		float x = radius * cos(theta);
 		float z = radius * sin(theta);
 		glm::vec3 outward = {cos(theta), 0.0f, sin(theta)};
+		glm::vec4 sideTangent = {-sin(theta), 0.0f, cos(theta), 1.0f};
 		geom.vertices.push_back(
-		    {{x, -halfHeight, z}, outward, {(float)i / segments, 0.0f}, {0.5f, 0.0f, 0.5f}});
+		    {{x, -halfHeight, z}, outward, sideTangent, {(float)i / segments, 0.0f}, {0.5f, 0.0f, 0.5f, 1.0f}});
 	}
 
 	for (int i = 0; i < segments; i++) {
@@ -321,10 +352,10 @@ PrimitiveGeometry Primitives::createPlane(float width, float height) {
 	float halfH = height * 0.5f;
 
 	geom.vertices = {
-	    {{-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}, {0.8f, 0.8f, 0.8f}},
-	    {{-halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}, {0.8f, 0.8f, 0.8f}},
+	    {{-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.8f, 0.8f, 0.8f, 1.0f}},
+	    {{halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, {0.8f, 0.8f, 0.8f, 1.0f}},
+	    {{halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.8f, 0.8f, 0.8f, 1.0f}},
+	    {{-halfW, 0.0f, halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, {0.8f, 0.8f, 0.8f, 1.0f}},
 	};
 
 	geom.indices = {0, 1, 2, 0, 2, 3};

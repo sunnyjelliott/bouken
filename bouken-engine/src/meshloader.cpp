@@ -56,10 +56,11 @@ LoadedMesh MeshLoader::loadOBJ(const std::string& filepath) {
 			if (attrib.colors.size() > 3 * index.vertex_index + 2) {
 				vertex.color = {attrib.colors[3 * index.vertex_index + 0],
 				                attrib.colors[3 * index.vertex_index + 1],
-				                attrib.colors[3 * index.vertex_index + 2]};
+				                attrib.colors[3 * index.vertex_index + 2],
+				                1.0f};
 			} else {
 				// Default white color
-				vertex.color = {1.0f, 1.0f, 1.0f};
+				vertex.color = {1.0f, 1.0f, 1.0f, 1.0f};
 			}
 
 			// Check if vertex already exists

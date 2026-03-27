@@ -38,7 +38,7 @@ struct Vertex {
 		attributeDescriptions[2].binding = 0;
 		attributeDescriptions[2].location = 2;
 		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex, normal);
+		attributeDescriptions[2].offset = offsetof(Vertex, tangent);
 
 		// UV
 		attributeDescriptions[3].binding = 0;
