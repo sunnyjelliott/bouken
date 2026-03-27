@@ -6,6 +6,82 @@
 #include "texturemanager.h"
 #include "transform.h"
 
+#include "mikktspace.h"
+
+struct MikkTSpaceContext {
+	std::vector<Vertex>* vertices;
+	const std::vector<uint32_t>* indices;
+};
+
+static int mikkGetNumFaces(const SMikkTSpaceContext* ctx) {
+	auto* data = static_cast<MikkTSpaceContext*>(ctx->m_pUserData);
+	return static_cast<int>(data->indices->size() / 3);
+}
+
+static int mikkGetNumVerticesOfFace(const SMikkTSpaceContext*, int) {
+	return 3;  // always triangles
+}
+
+static void mikkGetPosition(const SMikkTSpaceContext* ctx, float outPos[3],
+                            int face, int vert) {
+	auto* data = static_cast<MikkTSpaceContext*>(ctx->m_pUserData);
+	uint32_t idx = (*data->indices)[face * 3 + vert];
+	const glm::vec3& p = (*data->vertices)[idx].position;
+	outPos[0] = p.x;
+	outPos[1] = p.y;
+	outPos[2] = p.z;
+}
+
+static void mikkGetNormal(const SMikkTSpaceContext* ctx, float outNorm[3],
+                          int face, int vert) {
+	auto* data = static_cast<MikkTSpaceContext*>(ctx->m_pUserData);
+	uint32_t idx = (*data->indices)[face * 3 + vert];
+	const glm::vec3& n = (*data->vertices)[idx].normal;
+	outNorm[0] = n.x;
+	outNorm[1] = n.y;
+	outNorm[2] = n.z;
+}
+
+static void mikkGetTexCoord(const SMikkTSpaceContext* ctx, float outUV[2],
+                            int face, int vert) {
+	auto* data = static_cast<MikkTSpaceContext*>(ctx->m_pUserData);
+	uint32_t idx = (*data->indices)[face * 3 + vert];
+	const glm::vec2& uv = (*data->vertices)[idx].uv;
+	outUV[0] = uv.x;
+	outUV[1] = uv.y;
+}
+
+static void mikkSetTSpaceBasic(const SMikkTSpaceContext* ctx,
+                               const float tangent[3], float sign, int face,
+                               int vert) {
+	auto* data = static_cast<MikkTSpaceContext*>(ctx->m_pUserData);
+	uint32_t idx = (*data->indices)[face * 3 + vert];
+	(*data->vertices)[idx].tangent =
+	    glm::vec4(tangent[0], tangent[1], tangent[2], sign);
+}
+
+static void generateMikkTSpaceTangents(std::vector<Vertex>& vertices,
+                                       const std::vector<uint32_t>& indices) {
+	MikkTSpaceContext userData{&vertices, &indices};
+
+	SMikkTSpaceInterface iface{};
+	iface.m_getNumFaces = mikkGetNumFaces;
+	iface.m_getNumVerticesOfFace = mikkGetNumVerticesOfFace;
+	iface.m_getPosition = mikkGetPosition;
+	iface.m_getNormal = mikkGetNormal;
+	iface.m_getTexCoord = mikkGetTexCoord;
+	iface.m_setTSpaceBasic = mikkSetTSpaceBasic;
+	iface.m_setTSpace = nullptr;  // basic is sufficient
+
+	SMikkTSpaceContext mikkCtx{};
+	mikkCtx.m_pInterface = &iface;
+	mikkCtx.m_pUserData = &userData;
+
+	if (!genTangSpaceDefault(&mikkCtx)) {
+		std::cerr << "MikkTSpace tangent generation failed" << std::endl;
+	}
+}
+
 bool SceneLoader::loadScene(const std::string& filepath, World& world,
                             RenderSystem& renderSystem,
                             TextureManager& textureManager,
@@ -155,6 +231,10 @@ void SceneLoader::parseUsdMaterials(
 		material.baseColor = info.baseColor;
 		material.albedoTextureID = 0;
 		material.normalTextureID = 0;
+		material.metallicTextureID = 0;
+		material.roughnessTextureID = 0;
+		material.aoTextureID = 0;
+		material.emissiveTextureID = 0;
 
 		if (!info.albedoPath.empty()) {
 			auto it = pathToTextureID.find(info.albedoPath);
@@ -272,7 +352,7 @@ MaterialTextureInfo SceneLoader::extractMaterialTextureInfo(
 		return info;
 	}
 
-	// Extract diffuse color
+	// diffuse color (rename to albedo when processed)
 	UsdShadeInput diffuseInput = shader.GetInput(TfToken("diffuseColor"));
 	if (diffuseInput) {
 		GfVec3f colorValue;
@@ -281,20 +361,80 @@ MaterialTextureInfo SceneLoader::extractMaterialTextureInfo(
 			    glm::vec3(colorValue[0], colorValue[1], colorValue[2]);
 		}
 
-		std::string texturePath =
+		std::string diffusePath =
 		    resolveInputTexturePath(diffuseInput, sceneDir);
-		if (!texturePath.empty()) {
-			info.albedoPath = texturePath;
+		if (!diffusePath.empty()) {
+			info.albedoPath = diffusePath;
 		}
 	}
 
-	// Extract normal
+	// normal (we don't use a fallback here - default normal in shader)
 	UsdShadeInput normalInput = shader.GetInput(TfToken("normal"));
 	if (normalInput) {
 		std::string texturePath =
 		    resolveInputTexturePath(normalInput, sceneDir);
 		if (!texturePath.empty()) {
 			info.normalPath = texturePath;
+		}
+	}
+
+	// metallic
+	UsdShadeInput metallicInput = shader.GetInput(TfToken("metallic"));
+	if (metallicInput) {
+		float metallicValue;
+		if (metallicInput.Get(&metallicValue)) {
+			info.metallic = metallicValue;
+		}
+
+		std::string metallicPath =
+		    resolveInputTexturePath(metallicInput, sceneDir);
+		if (!metallicPath.empty()) {
+			info.metallicPath = metallicPath;
+		}
+	}
+
+	// roughness
+	UsdShadeInput roughnessInput = shader.GetInput(TfToken("roughness"));
+	if (roughnessInput) {
+		float roughnessValue;
+		if (roughnessInput.Get(&roughnessValue)) {
+			info.roughness = roughnessValue;
+		}
+
+		std::string roughnessPath =
+		    resolveInputTexturePath(roughnessInput, sceneDir);
+		if (!roughnessPath.empty()) {
+			info.roughnessPath = roughnessPath;
+		}
+	}
+
+	// occlusion (ao rename)
+	UsdShadeInput occlusionInput = shader.GetInput(TfToken("occlusion"));
+	if (occlusionInput) {
+		float occlusionValue = 1.0f;
+		if (occlusionInput.Get(&occlusionValue)) {
+			info.occlusion = occlusionValue;
+		}
+
+		std::string occlusionPath =
+		    resolveInputTexturePath(occlusionInput, sceneDir);
+		if (!occlusionPath.empty()) {
+			info.aoPath = occlusionPath;
+		}
+	}
+
+	UsdShadeInput emissiveInput = shader.GetInput(TfToken("emissiveColor"));
+	if (emissiveInput) {
+		GfVec3f emissiveValue;
+		if (emissiveInput.Get(&emissiveValue)) {
+			info.emissiveColor =
+			    glm::vec3(emissiveValue[0], emissiveValue[1], emissiveValue[2]);
+		}
+
+		std::string emissivePath =
+		    resolveInputTexturePath(emissiveInput, sceneDir);
+		if (!emissivePath.empty()) {
+			info.emissivePath = emissivePath;
 		}
 	}
 
@@ -311,6 +451,9 @@ struct UsdMeshData {
 	VtArray<GfVec2f> uvs;
 	bool hasUVs = false;
 	TfToken uvInterpolation;
+	VtArray<GfVec3f> tangents;
+	VtArray<float> tangentSigns;
+	bool hasTangents = false;
 	VtArray<int> faceVertexCounts;
 	VtArray<int> faceVertexIndices;
 };
@@ -338,6 +481,22 @@ UsdMeshData loadUsdMeshData(const UsdGeomMesh& mesh) {
 		}
 	}
 
+	UsdGeomPrimvar tangentPrimvar = primvarsAPI.GetPrimvar(TfToken("tangents"));
+	UsdGeomPrimvar signPrimvar =
+	    primvarsAPI.GetPrimvar(TfToken("tangentSigns"));
+
+	if (tangentPrimvar && tangentPrimvar.HasValue()) {
+		tangentPrimvar.ComputeFlattened(&data.tangents);
+		if (signPrimvar && signPrimvar.HasValue()) {
+			signPrimvar.ComputeFlattened(&data.tangentSigns);
+		}
+		data.hasTangents = !data.tangents.empty();
+		if (data.hasTangents) {
+			std::cout << "  Found USD tangents (" << data.tangents.size() << ")"
+			          << std::endl;
+		}
+	}
+
 	mesh.GetFaceVertexCountsAttr().Get(&data.faceVertexCounts);
 	mesh.GetFaceVertexIndicesAttr().Get(&data.faceVertexIndices);
 
@@ -347,7 +506,7 @@ UsdMeshData loadUsdMeshData(const UsdGeomMesh& mesh) {
 Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx,
                    int vertexIndex) {
 	Vertex v;
-	v.color = glm::vec3(1.0f);
+	v.color = glm::vec4(1.0f);
 
 	v.position =
 	    glm::vec3(data.points[vertexIndex][0], data.points[vertexIndex][1],
@@ -380,6 +539,22 @@ Vertex buildVertex(const UsdMeshData& data, int faceVertexIdx,
 		}
 	} else {
 		v.uv = glm::vec2(0.0f, 0.0f);
+	}
+
+	v.tangent = glm::vec4(0.0f);
+	if (data.hasTangents) {
+		const int tangentIdx =
+		    (data.normalInterpolation == UsdGeomTokens->faceVarying)
+		        ? faceVertexIdx
+		        : vertexIndex;
+		if (tangentIdx < (int)data.tangents.size()) {
+			float sign = (tangentIdx < (int)data.tangentSigns.size())
+			                 ? data.tangentSigns[tangentIdx]
+			                 : 1.0f;
+			v.tangent = glm::vec4(data.tangents[tangentIdx][0],
+			                      data.tangents[tangentIdx][1],
+			                      data.tangents[tangentIdx][2], sign);
+		}
 	}
 
 	return v;
@@ -436,6 +611,14 @@ uint32_t processSubset(const UsdMeshData& data, const UsdGeomSubset& subset,
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 	triangulateFaces(data, subsetFaceIndices, vertices, indices);
+	if (!data.hasTangents) {
+		if (data.hasUVs) {
+			generateMikkTSpaceTangents(vertices, indices);
+		} else {
+			std::cerr << "  Warning: no UVs for tangent generation on subset"
+			          << std::endl;
+		}
+	}
 	return renderSystem.uploadMesh(vertices, indices);
 }
 
@@ -635,6 +818,15 @@ uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 	triangulateFaces(data, faceIndices, vertices, indices);
+
+	if (!data.hasTangents) {
+		if (data.hasUVs) {
+			generateMikkTSpaceTangents(vertices, indices);
+		} else {
+			std::cerr << "  Warning: no UVs for tangent generation on "
+			          << prim.GetPath() << std::endl;
+		}
+	}
 
 	std::cout << "  Loaded mesh: " << prim.GetPath() << " (" << vertices.size()
 	          << " vertices, " << indices.size() / 3 << " triangles, "

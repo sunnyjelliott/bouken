@@ -41,6 +41,9 @@ class VulkanContext {
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
+	void setDebugName(const VkDebugUtilsObjectNameInfoEXT& nameInfo);
+	bool isValidationEnabled() const { return m_enableValidationLayers; }
+
    private:
 	// Initialization functions
 	void createInstance();
@@ -84,6 +87,8 @@ class VulkanContext {
 
 	const std::vector<const char*> m_deviceExtensions = {
 	    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+	PFN_vkSetDebugUtilsObjectNameEXT m_vkSetDebugUtilsObjectNameEXT = nullptr;
 
 #ifdef NDEBUG
 	const bool m_enableValidationLayers = false;

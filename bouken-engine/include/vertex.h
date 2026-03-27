@@ -5,8 +5,9 @@
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
+	glm::vec4 tangent;
 	glm::vec2 uv;
-	glm::vec3 color;  // prim/debug
+	glm::vec4 color;  // prim/debug
 
 	static VkVertexInputBindingDescription getBindingDescription() {
 		VkVertexInputBindingDescription bindingDescription{};
@@ -16,9 +17,9 @@ struct Vertex {
 		return bindingDescription;
 	}
 
-	static std::array<VkVertexInputAttributeDescription, 4>
+	static std::array<VkVertexInputAttributeDescription, 5>
 	getAttributeDescriptions() {
-		std::array<VkVertexInputAttributeDescription, 4>
+		std::array<VkVertexInputAttributeDescription, 5>
 		    attributeDescriptions{};
 
 		// Position
@@ -33,17 +34,23 @@ struct Vertex {
 		attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeDescriptions[1].offset = offsetof(Vertex, normal);
 
-		// UV
+		// Tangent
 		attributeDescriptions[2].binding = 0;
 		attributeDescriptions[2].location = 2;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex, uv);
+		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[2].offset = offsetof(Vertex, normal);
 
-		// Color
+		// UV
 		attributeDescriptions[3].binding = 0;
 		attributeDescriptions[3].location = 3;
-		attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[3].offset = offsetof(Vertex, color);
+		attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
+		attributeDescriptions[3].offset = offsetof(Vertex, uv);
+
+		// Color
+		attributeDescriptions[4].binding = 0;
+		attributeDescriptions[4].location = 4;
+		attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		attributeDescriptions[4].offset = offsetof(Vertex, color);
 
 		return attributeDescriptions;
 	}

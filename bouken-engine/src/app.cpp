@@ -57,6 +57,7 @@ void Application::initVulkan() {
 
 	m_vulkanTextureBackend.initialize(m_context);
 	m_textureManager.initialize(&m_vulkanTextureBackend);
+	m_materialManager.initialize();
 
 	m_renderSystem.initialize(m_context, m_swapChain);
 }
@@ -72,8 +73,6 @@ void Application::initScene() {
 	m_world.addComponent(
 	    m_activeCamera,
 	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 10000.0f});
-	m_cameraSystem.setActiveCamera(m_activeCamera);
-
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	SceneLoadOptions options;

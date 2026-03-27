@@ -20,9 +20,23 @@ struct SceneLoadOptions {
 };
 
 struct MaterialTextureInfo {
+	glm::vec3 baseColor = glm::vec3(1.0f);
 	std::string albedoPath;
+
+	glm::vec3 normal;
 	std::string normalPath;
-	glm::vec3 baseColor = glm::vec3(0.8f);
+
+	float metallic = 0.0f;
+	std::string metallicPath;
+
+	float roughness = 0.5f;
+	std::string roughnessPath;
+
+	float occlusion = 1.0f;
+	std::string aoPath;
+
+	glm::vec3 emissiveColor = glm::vec3(0.0f);
+	std::string emissivePath;
 };
 
 class SceneLoader {

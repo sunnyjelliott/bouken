@@ -73,6 +73,13 @@ void VulkanContext::createInstance() {
 	if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create Vulkan instance!");
 	}
+
+	if (m_enableValidationLayers) {
+		m_vkSetDebugUtilsObjectNameEXT =
+		    reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
+		        vkGetInstanceProcAddr(m_instance,
+		                              "vkSetDebugUtilsObjectNameEXT"));
+	}
 }
 
 void VulkanContext::setupDebugMessenger() {
@@ -404,6 +411,13 @@ void VulkanContext::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkQueueWaitIdle(m_graphicsQueue);  // Wait for transfer to complete
 
 	vkFreeCommandBuffers(m_device, m_commandPool, 1, &commandBuffer);
+}
+
+void VulkanContext::setDebugName(
+    const VkDebugUtilsObjectNameInfoEXT& nameInfo) {
+	if (m_vkSetDebugUtilsObjectNameEXT) {
+		m_vkSetDebugUtilsObjectNameEXT(m_device, &nameInfo);
+	}
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallback(

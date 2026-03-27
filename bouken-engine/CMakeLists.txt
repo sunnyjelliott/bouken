@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(BunnyEngine)
+project(BoukenEngine)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -98,6 +98,18 @@ FetchContent_Declare(
     SYSTEM
 )
 FetchContent_MakeAvailable(vma)
+
+# --------------------------------
+#           MikkTSpace
+# --------------------------------
+FetchContent_Declare(
+    mikktspace
+    GIT_REPOSITORY https://github.com/mmikk/MikkTSpace.git
+    GIT_TAG        master
+    SYSTEM
+)
+FetchContent_MakeAvailable(mikktspace)
+
 
 # --------------------------------
 #             OpenUSD
@@ -241,9 +253,13 @@ if(USD_ROOT)
     )
 endif()
 
+target_sources(BoukenEngine PRIVATE
+    ${mikktspace_SOURCE_DIR}/mikktspace.c
+)
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include
     ${stb_SOURCE_DIR}
+    ${mikktspace_SOURCE_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE 
