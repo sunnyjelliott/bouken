@@ -46,7 +46,7 @@ const float EPSILON     = 0.0001;
 // Hardcoded directional light
 // TODO: replace with light buffer when LightSystem exists
 // -------------------------------------------------------
-const vec3  LIGHT_DIRECTION = normalize(vec3(-0.0, -1.0, -0.0));
+const vec3  LIGHT_DIRECTION = normalize(vec3(-0.5, -1.0, -0.3));
 const vec3  LIGHT_COLOR     = vec3(1.0, 0.98, 0.95); // slightly warm white
 const float LIGHT_INTENSITY = 3.0;
 const vec3  AMBIENT_COLOR   = vec3(0.03, 0.03, 0.04); // dim cool ambient
@@ -205,6 +205,4 @@ void main() {
     // -------------------------------------------------------
     vec3 hdrColor = directLight + ambient + emissiveContrib;
     out_hdrColor  = vec4(hdrColor, 1.0);
-
-    //out_hdrColor = vec4(baseColor, 1.0);
 }
