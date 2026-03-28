@@ -20,7 +20,8 @@ class TextureManager {
 	uint32_t loadTexture(const std::string& filepath);
 
 	std::vector<uint32_t> loadTexturesBatch(
-	    const std::vector<std::string>& filepaths);
+	    const std::vector<std::string>& filepaths,
+	    const std::vector<bool>& sRGBFlags = {});
 
 	void* getBindingData(uint32_t textureID) const;
 	bool hasTexture(uint32_t textureID) const;
@@ -51,7 +52,7 @@ class TextureManager {
 	uint32_t m_defaultNormalTextureID = 0;
 
 	static DecodedImage decodeImage(const std::string& filepath);
-	uint32_t uploadDecodedImage(const DecodedImage& decoded);
+	uint32_t uploadDecodedImage(const DecodedImage& decoded, bool sRGB);
 
 	void createDefaultTextures();
 };

@@ -205,4 +205,6 @@ void main() {
     // -------------------------------------------------------
     vec3 hdrColor = directLight + ambient + emissiveContrib;
     out_hdrColor  = vec4(hdrColor, 1.0);
+
+    //out_hdrColor = vec4(baseColor, 1.0);
 }

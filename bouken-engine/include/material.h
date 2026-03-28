@@ -14,9 +14,9 @@ struct MaterialConstants {
 	float metallic;
 	float roughness;
 	float occlusion;
-	float _pad;
+	float opacity;
 	uint32_t textureFlags;
-	uint32_t _pad2[3];
+	uint32_t _pad[3];
 };
 
 struct Material {
@@ -26,6 +26,7 @@ struct Material {
 	float roughness = 0.5f;
 	float occlusion = 1.0f;
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
+	float opacity = 1.0f;
 
 	// Texture overrides
 	uint32_t albedoTextureID = 0;
@@ -42,6 +43,7 @@ struct Material {
 		mc.roughness = roughness;
 		mc.occlusion = occlusion;
 		mc.emissiveColor = glm::vec4(emissiveColor, 1.0f);
+		mc.opacity = opacity;
 
 		if (albedoTextureID != 0) mc.textureFlags |= MAT_FLAG_HAS_ALBEDO;
 		if (normalTextureID != 0) mc.textureFlags |= MAT_FLAG_HAS_NORMAL;

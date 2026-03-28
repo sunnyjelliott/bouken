@@ -27,14 +27,20 @@ uint32_t TextureManager::loadTexture(const std::string& filepath) {
 }
 
 std::vector<uint32_t> TextureManager::loadTexturesBatch(
-    const std::vector<std::string>& filepaths) {
+    const std::vector<std::string>& filepaths,
+    const std::vector<bool>& sRGBFlags) {
 	auto startTime = std::chrono::high_resolution_clock::now();
 
 	std::cout << "Batch loading " << filepaths.size() << " textures..."
 	          << std::endl;
 
+	auto getSRGB = [&](size_t i) {
+		return (i < sRGBFlags.size()) ? sRGBFlags[i] : true;
+	};
+
 	// Filter out already-loaded textures
 	std::vector<std::string> pathsToLoad;
+	std::vector<bool> sRGBToLoad;
 	std::vector<uint32_t> results(filepaths.size(), 0);
 
 	for (size_t i = 0; i < filepaths.size(); ++i) {
@@ -44,6 +50,7 @@ std::vector<uint32_t> TextureManager::loadTexturesBatch(
 			results[i] = it->second;
 		} else {
 			pathsToLoad.push_back(filepaths[i]);
+			sRGBToLoad.push_back(getSRGB(i));
 		}
 	}
 
@@ -84,8 +91,8 @@ std::vector<uint32_t> TextureManager::loadTexturesBatch(
 	for (size_t i = 0; i < filepaths.size(); ++i) {
 		if (results[i] == 0) {
 			// This was a new texture
-			uint32_t textureID =
-			    uploadDecodedImage(decodedImages[newTextureIdx]);
+			uint32_t textureID = uploadDecodedImage(
+			    decodedImages[newTextureIdx], sRGBToLoad[newTextureIdx]);
 			results[i] = textureID;
 
 			// Free decoded pixel data
@@ -142,7 +149,8 @@ DecodedImage TextureManager::decodeImage(const std::string& filepath) {
 	return result;
 }
 
-uint32_t TextureManager::uploadDecodedImage(const DecodedImage& decoded) {
+uint32_t TextureManager::uploadDecodedImage(const DecodedImage& decoded,
+                                            bool sRGB) {
 	if (!decoded.success || !decoded.pixels) {
 		return 0;
 	}
@@ -153,7 +161,8 @@ uint32_t TextureManager::uploadDecodedImage(const DecodedImage& decoded) {
 	createInfo.width = static_cast<uint32_t>(decoded.width);
 	createInfo.height = static_cast<uint32_t>(decoded.height);
 	createInfo.channels = 4;
-	createInfo.generateMipmaps = false;
+	createInfo.generateMipmaps = true;
+	createInfo.sRGB = sRGB;
 
 	BackendTextureHandle backendHandle = m_backend->createTexture(createInfo);
 

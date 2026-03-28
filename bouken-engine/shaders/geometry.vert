@@ -21,7 +21,7 @@ layout(location = 4) out vec3 v_ws_bitangent;
 void main() {
     vec4 ws_position = pc.model * vec4(a_position, 1.0);
 
-    mat3 normalMatrix = mat3(transpose(inverse(pc.model)));
+    mat3 normalMatrix = transpose(inverse(mat3(pc.model)));
 
     vec3 ws_normal  = normalize(normalMatrix * a_normal);
     vec3 ws_tangent = normalize(normalMatrix * a_tangent.xyz);
@@ -31,7 +31,8 @@ void main() {
 
     vec3 ws_bitangent = cross(ws_normal, ws_tangent) * a_tangent.w;
 
-    v_uv           = a_uv;
+    //v_uv           = a_uv;
+    v_uv = vec2(a_uv.x, 1.0 - a_uv.y);
     v_color        = a_color;
     v_ws_normal    = ws_normal;
     v_ws_tangent   = ws_tangent;

@@ -31,6 +31,8 @@ class VulkanTextureBackend : public ITextureBackend {
 		VmaAllocation allocation = VK_NULL_HANDLE;
 		VkImageView imageView = VK_NULL_HANDLE;
 		VkSampler sampler = VK_NULL_HANDLE;
+		VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+		uint32_t mipLevels = 1;
 		VulkanTextureBindingData bindingData;
 	};
 

@@ -9,6 +9,7 @@ struct TextureCreateInfo {
 	uint32_t height;
 	uint32_t channels;
 	bool generateMipmaps = false;
+	bool sRGB = true;
 };
 
 class ITextureBackend {

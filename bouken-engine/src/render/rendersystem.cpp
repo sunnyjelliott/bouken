@@ -277,6 +277,11 @@ void RenderSystem::gatherRenderItems(World& world,
 		const MaterialBinding& materialBinding =
 		    world.getComponent<MaterialBinding>(entity);
 
+		// Skip cutout materials entirely until transparency is implemented
+		const Material& material =
+		    materialManager.getMaterial(materialBinding.materialID);
+		if (material.opacity < 1.0f) continue;
+
 		if (!meshRenderer.visible) continue;
 
 		VkDescriptorSet descriptorSet =

@@ -15,7 +15,7 @@ layout(location = 4) in vec3 v_ws_bitangent;
 layout(set = 2, binding = 0) uniform sampler2D u_albedoMap;
 layout(set = 2, binding = 1) uniform sampler2D u_normalMap;
 layout(set = 2, binding = 2) uniform sampler2D u_metallicMap;
-layout(set = 2, binding = 3) uniform sampler2D u_roughnessMap; // R: metallic, G: roughness
+layout(set = 2, binding = 3) uniform sampler2D u_roughnessMap;
 layout(set = 2, binding = 4) uniform sampler2D u_aoMap;
 layout(set = 2, binding = 5) uniform sampler2D u_emissiveMap;
 layout(set = 2, binding = 6) uniform MaterialConstants {
@@ -24,9 +24,9 @@ layout(set = 2, binding = 6) uniform MaterialConstants {
     float    u_metallic;
     float    u_roughness;
     float    u_occlusion;
-    float    _pad;
+    float    u_opacity;
     uint     u_textureFlags;
-    uint     _pad2[3];
+    uint     _pad[3];
 } u_material;
 
 bool hasTexture(uint flag) {
@@ -78,13 +78,20 @@ vec2 octEncode(vec3 n) {
 
 void main() {
     // Base color
-    vec3 baseColor = hasTexture(FLAG_HAS_ALBEDO)
-    ? texture(u_albedoMap, v_uv).rgb
-    : u_material.u_baseColor.rgb;
+    vec4 albedoSample = hasTexture(FLAG_HAS_ALBEDO)
+        ? texture(u_albedoMap, v_uv)
+        : vec4(u_material.u_baseColor.rgb, u_material.u_baseColor.a);
+
+    vec3 baseColor = albedoSample.rgb;
 
     // Blend with vertex color when no albedo texture
     if (!hasTexture(FLAG_HAS_ALBEDO)) {
         baseColor *= v_color.rgb;
+    }
+
+    // TODO: support translucency
+    if (u_material.u_opacity < 1.0) {
+        discard;
     }
 
     // Metallic
@@ -135,4 +142,11 @@ void main() {
     // flags byte: bit 0 = has emissive, others reserved
     float flags = (dot(emissive, emissive) > 0.0) ? 1.0 : 0.0;
     out_emissiveFlags = vec4(emissive, flags);
+
+    // DEBUG: visualize world-space normal
+    // Replace the G-buffer pack block temporarily
+    // out_baseColorMetallic = vec4(ws_normal * 0.5 + 0.5, 1.0);
+    // out_normals           = octEncode(ws_normal);
+    // out_roughnessAOSpecID = vec4(0.5, 1.0, 0.5, 0.0);
+    // out_emissiveFlags     = vec4(0.0);
 }

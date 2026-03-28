@@ -37,6 +37,9 @@ struct MaterialTextureInfo {
 
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	std::string emissivePath;
+
+	float opacityThreshold = 0.0f;
+	std::string opacityPath;
 };
 
 class SceneLoader {
@@ -77,12 +80,14 @@ class SceneLoader {
 	static Entity traverseUsdPrim(
 	    const UsdPrim& prim, World& world, RenderSystem& renderSystem,
 	    const std::unordered_map<SdfPath, uint32_t, SdfPath::Hash>& materialMap,
-	    Entity parent);
+	    Entity parent, UsdGeomXformCache& xformCache);
 	static void extractUsdTransform(const UsdPrim& prim, Transform& transform);
 	static bool isUsdGeometry(const UsdPrim& prim);
 	static uint32_t createMeshFromUsdGeom(const UsdPrim& prim,
-	                                      RenderSystem& renderSystem);
+	                                      RenderSystem& renderSystem,
+	                                      const glm::mat4& worldMat);
 	static uint32_t createMeshFromUsdGeomSubset(const UsdPrim& meshPrim,
 	                                            const UsdGeomSubset& subset,
-	                                            RenderSystem& renderSystem);
+	                                            RenderSystem& renderSystem,
+	                                            const glm::mat4& worldMat);
 };
