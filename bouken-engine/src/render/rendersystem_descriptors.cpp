@@ -1,3 +1,4 @@
+#include "lighting/lightsystem.h"
 #include "materialmanager.h"
 #include "render/framedata.h"
 #include "render/rendersystem.h"
@@ -6,7 +7,7 @@
 
 void RenderSystem::createDescriptorSetLayouts() {
 	// -------------------------------------------------------
-	// Set 0 — per frame: one UBO visible to all stages
+	// Set 0 - per frame: one UBO visible to all stages
 	// -------------------------------------------------------
 	VkDescriptorSetLayoutBinding frameUBOBinding{};
 	frameUBOBinding.binding = 0;
@@ -27,9 +28,9 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// -------------------------------------------------------
-	// Set 1a — lighting pass: 5 G-buffer samplers + depth
+	// Set 1a - lighting pass: 5 G-buffer samplers + depth
 	// -------------------------------------------------------
-	std::array<VkDescriptorSetLayoutBinding, 5> lightingBindings{};
+	std::array<VkDescriptorSetLayoutBinding, 6> lightingBindings{};
 	for (uint32_t i = 0; i < 5; i++) {
 		lightingBindings[i].binding = i;
 		lightingBindings[i].descriptorType =
@@ -37,6 +38,12 @@ void RenderSystem::createDescriptorSetLayouts() {
 		lightingBindings[i].descriptorCount = 1;
 		lightingBindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	}
+
+	// Binding 5: light SSBO
+	lightingBindings[5].binding = 5;
+	lightingBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	lightingBindings[5].descriptorCount = 1;
+	lightingBindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	VkDescriptorSetLayoutCreateInfo lightingLayoutInfo{};
 	lightingLayoutInfo.sType =
@@ -53,7 +60,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// -------------------------------------------------------
-	// Set 1b — tonemap pass: 1 HDR sampler
+	// Set 1b - tonemap pass: 1 HDR sampler
 	// -------------------------------------------------------
 	VkDescriptorSetLayoutBinding tonemapBinding{};
 	tonemapBinding.binding = 0;
@@ -75,7 +82,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// -------------------------------------------------------
-	// Set 2 — per material: 6 texture samplers + 1 UBO
+	// Set 2 - per material: 6 texture samplers + 1 UBO
 	// -------------------------------------------------------
 	std::array<VkDescriptorSetLayoutBinding, 7> materialBindings{};
 	for (uint32_t i = 0; i < 6; i++) {
@@ -106,7 +113,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// -------------------------------------------------------
-	// Set 3 — per object: stub, no bindings
+	// Set 3 - per object: stub, no bindings
 	// Reserved for skeletal animation / instancing
 	// -------------------------------------------------------
 	VkDescriptorSetLayoutCreateInfo objectLayoutInfo{};
@@ -128,7 +135,7 @@ void RenderSystem::createDescriptorPool() {
 	    static_cast<uint32_t>(m_swapChain->getImageCount());
 	constexpr uint32_t MAX_MATERIALS = 100;
 
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
 	// UBOs: per swapchain image + per material
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -137,6 +144,10 @@ void RenderSystem::createDescriptorPool() {
 	// Combined image samplers: lighting(5) + tonemap(1) + materials(6 * max)
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[1].descriptorCount = 5 + 1 + (6 * MAX_MATERIALS);
+
+	// SSBOs: lighting, then cluster lighting (TODO)
+	poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	poolSizes[2].descriptorCount = 1;  // one lighting SSBO
 
 	// Max sets:
 	//   frame sets     : swapImageCount
@@ -235,7 +246,7 @@ void RenderSystem::createFrameDescriptorSets() {
 	}
 }
 
-void RenderSystem::createLightingDescriptorSet() {
+void RenderSystem::createLightingDescriptorSet(LightSystem& lightSystem) {
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = m_descriptorPool;
@@ -267,7 +278,12 @@ void RenderSystem::createLightingDescriptorSet() {
 	imageInfos[4] = {m_gbufferSampler, m_depth.target.getImageView(),
 	                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
 
-	std::array<VkWriteDescriptorSet, 5> writes{};
+	VkDescriptorBufferInfo lightBufferInfo{};
+	lightBufferInfo.buffer = lightSystem.getBuffer();
+	lightBufferInfo.offset = 0;
+	lightBufferInfo.range = lightSystem.getBufferSize();
+
+	std::array<VkWriteDescriptorSet, 6> writes{};
 	for (uint32_t i = 0; i < 5; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = m_lightingSet;
@@ -277,6 +293,14 @@ void RenderSystem::createLightingDescriptorSet() {
 		writes[i].descriptorCount = 1;
 		writes[i].pImageInfo = &imageInfos[i];
 	}
+
+	writes[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[5].dstSet = m_lightingSet;
+	writes[5].dstBinding = 5;
+	writes[5].dstArrayElement = 0;
+	writes[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	writes[5].descriptorCount = 1;
+	writes[5].pBufferInfo = &lightBufferInfo;
 
 	vkUpdateDescriptorSets(m_context->getDevice(),
 	                       static_cast<uint32_t>(writes.size()), writes.data(),

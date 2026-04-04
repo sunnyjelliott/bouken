@@ -13,6 +13,7 @@ class World;
 class CameraSystem;
 class MaterialManager;
 class TextureManager;
+class LightSystem;
 
 struct RenderItem {
 	Entity entity;
@@ -24,7 +25,8 @@ struct RenderItem {
 
 class RenderSystem {
    public:
-	void initialize(VulkanContext& context, SwapChain& swapChain);
+	void initialize(VulkanContext& context, SwapChain& swapChain,
+	                LightSystem& lightSystem);
 	void cleanup();
 
 	uint32_t loadMesh(const std::string& filepath);
@@ -50,7 +52,7 @@ class RenderSystem {
 	void createDescriptorPool();
 	void createFrameUBOs();
 	void createFrameDescriptorSets();
-	void createLightingDescriptorSet();
+	void createLightingDescriptorSet(LightSystem& lightSystem);
 	void createTonemapDescriptorSet();
 	void createDepthPrepass();
 	void createGeometryPass();
@@ -162,6 +164,7 @@ class RenderSystem {
 
 	std::vector<Vertex> m_allVertices;
 	std::vector<uint32_t> m_allIndices;
+	bool m_meshBufferDirty = false;
 
 	VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
 	VmaAllocation m_vertexBufferAllocation = VK_NULL_HANDLE;

@@ -59,7 +59,8 @@ void Application::initVulkan() {
 	m_textureManager.initialize(&m_vulkanTextureBackend);
 	m_materialManager.initialize();
 
-	m_renderSystem.initialize(m_context, m_swapChain);
+	m_lightSystem.initialize(m_context, m_context.getAllocator());
+	m_renderSystem.initialize(m_context, m_swapChain, m_lightSystem);
 }
 
 void Application::initScene() {
@@ -74,6 +75,23 @@ void Application::initScene() {
 	    m_activeCamera,
 	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 10000.0f});
 	m_cameraSystem.setActiveCamera(m_activeCamera);
+
+	// Test directional light - sun from above and slightly to the side
+	Entity sunLight = m_world.createEntity();
+	Transform sunTransform{};
+	// Rotate to point down and forward - directional lights use -Z forward
+	sunTransform.rotation =
+	    glm::quat(glm::vec3(glm::radians(-60.0f),  // pitch down
+	                        glm::radians(45.0f),   // yaw
+	                        0.0f));
+	sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
+	m_world.addComponent(sunLight, sunTransform);
+
+	Light sun{};
+	sun.type = LightType::Directional;
+	sun.color = glm::vec3(1.0f, 0.98f, 0.95f);  // warm white
+	sun.intensity = 3.0f;
+	m_world.addComponent(sunLight, sun);
 
 	SceneLoadOptions options;
 	options.createHeirarchy = true;
@@ -114,6 +132,8 @@ void Application::mainLoop() {
 		// Update transforms
 		m_transformSystem.update(m_world);
 
+		m_lightSystem.update(m_world);
+
 		// Render
 		m_renderSystem.drawFrame(m_swapChain, m_world, m_cameraSystem,
 		                         m_materialManager);
@@ -124,6 +144,7 @@ void Application::mainLoop() {
 
 void Application::cleanup() {
 	m_renderSystem.cleanup();
+	m_lightSystem.cleanup();
 	m_materialManager.cleanup();
 	m_textureManager.cleanup();
 	m_vulkanTextureBackend.cleanup();

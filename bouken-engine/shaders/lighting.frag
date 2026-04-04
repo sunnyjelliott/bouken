@@ -6,13 +6,28 @@
 layout (location = 0) in vec2 v_uv;
 
 // -------------------------------------------------------
-// G-buffer samplers — set 1
+// set 1: G-buffer, Lighting
 // -------------------------------------------------------
 layout(set = 1, binding = 0) uniform sampler2D u_gbuffer0; // baseColor + metallic
 layout(set = 1, binding = 1) uniform sampler2D u_gbuffer1; // oct-encoded normal
 layout(set = 1, binding = 2) uniform sampler2D u_gbuffer2; // roughness + ao + specular + id
 layout(set = 1, binding = 3) uniform sampler2D u_gbuffer3; // emissive + flags
 layout(set = 1, binding = 4) uniform sampler2D u_depth;    // depth buffer
+
+struct LightData {
+    vec4     positionAndRadius;   // xyz = pos (point/spot) or dir (directional), w = radius
+    vec4     colorAndIntensity;   // xyz = color, w = intensity
+    vec4     directionAndCosOuter; // xyz = direction, w = cos(outerAngle)
+    uint     type;                // 0=directional, 1=point, 2=spot
+    float    cosInner;
+    float    _pad[2];
+};
+
+layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
+    uint      u_lightCount;
+    uint      _pad[3];
+    LightData u_lights[];
+};
 
 // -------------------------------------------------------
 // Frame data — set 0
@@ -41,14 +56,6 @@ layout(location = 0) out vec4 out_hdrColor;
 const float PI          = 3.14159265359;
 const float INV_PI      = 1.0 / PI;
 const float EPSILON     = 0.0001;
-
-// -------------------------------------------------------
-// Hardcoded directional light
-// TODO: replace with light buffer when LightSystem exists
-// -------------------------------------------------------
-const vec3  LIGHT_DIRECTION = normalize(vec3(-0.5, -1.0, -0.3));
-const vec3  LIGHT_COLOR     = vec3(1.0, 0.98, 0.95); // slightly warm white
-const float LIGHT_INTENSITY = 3.0;
 const vec3  AMBIENT_COLOR   = vec3(0.03, 0.03, 0.04); // dim cool ambient
 
 // -------------------------------------------------------
@@ -178,15 +185,62 @@ void main() {
     // -------------------------------------------------------
     vec3 V = normalize(u_frame.cameraPosition.xyz - ws_position);
 
-    // -------------------------------------------------------
-    // Direct lighting — single directional light
-    // -------------------------------------------------------
-    vec3 L          = -LIGHT_DIRECTION; // light direction points toward surface
-    vec3 lightRadiance = LIGHT_COLOR * LIGHT_INTENSITY;
+    vec3 directLight = vec3(0.0);
 
-    vec3 directLight = evaluateBRDF(ws_normal, V, L,
-                                    baseColor, metallic, roughness)
-                     * lightRadiance;
+    for (uint i = 0; i < u_lightCount; i++) {
+        LightData light = u_lights[i];
+        vec3 lightColor = light.colorAndIntensity.rgb
+                        * light.colorAndIntensity.w;
+
+        if (light.type == 0u) {
+            // Directional — no attenuation, direction stored in positionAndRadius.xyz
+            vec3 L = normalize(-light.positionAndRadius.xyz);
+            directLight += evaluateBRDF(ws_normal, V, L,
+                                        baseColor, metallic, roughness)
+                        * lightColor;
+
+        } else if (light.type == 1u) {
+            // Point — inverse square attenuation
+            vec3  toLight = light.positionAndRadius.xyz - ws_position;
+            float dist    = length(toLight);
+            float radius  = light.positionAndRadius.w;
+
+            // Windowed inverse square — clean falloff at radius boundary
+            float attenuation = pow(max(1.0 - pow(dist / radius, 4.0), 0.0), 2.0)
+                            / (dist * dist + 1.0);
+
+            if (attenuation > 0.0001) {
+                vec3 L = normalize(toLight);
+                directLight += evaluateBRDF(ws_normal, V, L,
+                                            baseColor, metallic, roughness)
+                            * lightColor * attenuation;
+            }
+
+        } else if (light.type == 2u) {
+            // Spot — point light with angular falloff
+            vec3  toLight = light.positionAndRadius.xyz - ws_position;
+            float dist    = length(toLight);
+            float radius  = light.positionAndRadius.w;
+
+            float attenuation = pow(max(1.0 - pow(dist / radius, 4.0), 0.0), 2.0)
+                            / (dist * dist + 1.0);
+
+            if (attenuation > 0.0001) {
+                vec3  L        = normalize(toLight);
+                vec3  spotDir  = normalize(-light.directionAndCosOuter.xyz);
+                float cosAngle = dot(L, spotDir);
+                float cosOuter = light.directionAndCosOuter.w;
+                float cosInner = light.cosInner;
+
+                // Smooth angular falloff between inner and outer cone
+                float spotFalloff = smoothstep(cosOuter, cosInner, cosAngle);
+
+                directLight += evaluateBRDF(ws_normal, V, L,
+                                            baseColor, metallic, roughness)
+                            * lightColor * attenuation * spotFalloff;
+            }
+        }
+    }
 
     // -------------------------------------------------------
     // Ambient — very simple, modulated by AO

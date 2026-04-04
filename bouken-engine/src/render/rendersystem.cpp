@@ -24,7 +24,8 @@ static uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
 	throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain) {
+void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain,
+                              LightSystem& lightSystem) {
 	m_context = &context;
 	m_swapChain = &swapChain;
 	m_swapChainFormat = swapChain.getImageFormat();
@@ -37,7 +38,7 @@ void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain) {
 	createDescriptorPool();
 	createFrameUBOs();
 	createFrameDescriptorSets();
-	createLightingDescriptorSet();
+	createLightingDescriptorSet(lightSystem);
 	createTonemapDescriptorSet();
 	createDepthPrepass();
 	createGeometryPass();

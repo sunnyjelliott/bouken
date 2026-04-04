@@ -266,6 +266,7 @@ target_sources(BoukenEngine PRIVATE
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include
     include/render
+    include/lighting
     ${stb_SOURCE_DIR}
     ${mikktspace_SOURCE_DIR}
 )

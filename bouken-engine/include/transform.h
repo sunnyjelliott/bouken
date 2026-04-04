@@ -16,4 +16,6 @@ struct Transform {
 		mat = glm::scale(mat, scale);
 		return mat;
 	}
+
+	glm::vec3 worldPosition() const { return glm::vec3(worldMatrix[3]); }
 };

@@ -1,6 +1,7 @@
 #pragma once
 #include "camerasystem.h"
 #include "glfwinputbackend.h"
+#include "lighting/lightsystem.h"
 #include "materialmanager.h"
 #include "pch.h"
 #include "render/rendersystem.h"
@@ -37,6 +38,7 @@ class Application {
 	VulkanTextureBackend m_vulkanTextureBackend;
 	TextureManager m_textureManager;
 	MaterialManager m_materialManager;
+	LightSystem m_lightSystem;
 
 	float m_lastFrameTime = 0.0f;
 };

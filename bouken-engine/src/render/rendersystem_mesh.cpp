@@ -20,6 +20,7 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	// Append to global vertex/index arrays
 	m_allVertices.insert(m_allVertices.end(), vertices.begin(), vertices.end());
 	m_allIndices.insert(m_allIndices.end(), indices.begin(), indices.end());
+	m_meshBufferDirty = true;
 
 	return meshID;
 }
@@ -158,6 +159,7 @@ void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
 }
 
 void RenderSystem::flushMeshUploads() {
+	if (!m_meshBufferDirty) return;
 	if (!m_allVertices.empty() && !m_allIndices.empty()) {
 		uploadMeshData(m_allVertices, m_allIndices);
 	}
@@ -179,8 +181,7 @@ uint32_t RenderSystem::loadMesh(const std::string& filepath) {
 	m_allIndices.insert(m_allIndices.end(), loadedMesh.indices.begin(),
 	                    loadedMesh.indices.end());
 
-	// Re-upload all mesh data
-	uploadMeshData(m_allVertices, m_allIndices);
+	m_meshBufferDirty = true;
 
 	return meshID;
 }
