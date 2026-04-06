@@ -25,144 +25,113 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	return meshID;
 }
 
-void RenderSystem::uploadMeshData(const std::vector<Vertex>& vertices,
-                                  const std::vector<uint32_t>& indices) {
-	if (m_vertexBuffer != VK_NULL_HANDLE) {
-		vmaDestroyBuffer(m_context->getAllocator(), m_vertexBuffer,
-		                 m_vertexBufferAllocation);
-	}
-	if (m_indexBuffer != VK_NULL_HANDLE) {
-		vmaDestroyBuffer(m_context->getAllocator(), m_indexBuffer,
-		                 m_indexBufferAllocation);
-	}
-
-	VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
-	VkDeviceSize indexBufferSize = sizeof(uint32_t) * indices.size();
-
-	// === VERTEX BUFFER ===
-
-	// Create staging buffer (CPU-visible)
-	VkBuffer vertexStagingBuffer;
-	VmaAllocation vertexStagingAllocation;
-
-	VkBufferCreateInfo vertexStagingInfo{};
-	vertexStagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertexStagingInfo.size = vertexBufferSize;
-	vertexStagingInfo.usage =
-	    VK_BUFFER_USAGE_TRANSFER_SRC_BIT;  // Source for transfer
-	vertexStagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VmaAllocationCreateInfo vertexStagingAllocInfo{};
-	vertexStagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	vertexStagingAllocInfo.flags =
-	    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-	    VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-	VmaAllocationInfo vertexStagingAllocResult;
-	if (vmaCreateBuffer(m_context->getAllocator(), &vertexStagingInfo,
-	                    &vertexStagingAllocInfo, &vertexStagingBuffer,
-	                    &vertexStagingAllocation,
-	                    &vertexStagingAllocResult) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create vertex staging buffer!");
-	}
-
-	// Copy data to staging buffer
-	memcpy(vertexStagingAllocResult.pMappedData, vertices.data(),
-	       (size_t)vertexBufferSize);
-
-	// Create device-local buffer (GPU-only, fast)
-	VkBufferCreateInfo vertexBufferInfo{};
-	vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertexBufferInfo.size = vertexBufferSize;
-	vertexBufferInfo.usage =
-	    VK_BUFFER_USAGE_TRANSFER_DST_BIT |  // Destination for transfer
-	    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;  // Will be used as vertex buffer
-	vertexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VmaAllocationCreateInfo vertexAllocInfo{};
-	vertexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	vertexAllocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-
-	if (vmaCreateBuffer(m_context->getAllocator(), &vertexBufferInfo,
-	                    &vertexAllocInfo, &m_vertexBuffer,
-	                    &m_vertexBufferAllocation, nullptr) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create vertex buffer!");
-	}
-
-	// === INDEX BUFFER ===
-
-	// Create staging buffer
-	VkBuffer indexStagingBuffer;
-	VmaAllocation indexStagingAllocation;
-
-	VkBufferCreateInfo indexStagingInfo{};
-	indexStagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	indexStagingInfo.size = indexBufferSize;
-	indexStagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	indexStagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VmaAllocationCreateInfo indexStagingAllocInfo{};
-	indexStagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	indexStagingAllocInfo.flags =
-	    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-	    VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-	VmaAllocationInfo indexStagingAllocResult;
-	if (vmaCreateBuffer(m_context->getAllocator(), &indexStagingInfo,
-	                    &indexStagingAllocInfo, &indexStagingBuffer,
-	                    &indexStagingAllocation,
-	                    &indexStagingAllocResult) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create index staging buffer!");
-	}
-
-	// Copy data to staging buffer
-	memcpy(indexStagingAllocResult.pMappedData, indices.data(),
-	       (size_t)indexBufferSize);
-
-	// Create device-local buffer
-	VkBufferCreateInfo indexBufferInfo{};
-	indexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	indexBufferInfo.size = indexBufferSize;
-	indexBufferInfo.usage =
-	    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	indexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VmaAllocationCreateInfo indexAllocInfo{};
-	indexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-	indexAllocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-
-	if (vmaCreateBuffer(m_context->getAllocator(), &indexBufferInfo,
-	                    &indexAllocInfo, &m_indexBuffer,
-	                    &m_indexBufferAllocation, nullptr) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create index buffer!");
-	}
-
-	// Copy both buffers in a single command submission
-	VkCommandBuffer commandBuffer = m_context->beginSingleTimeCommands();
-
-	VkBufferCopy vertexCopyRegion{};
-	vertexCopyRegion.size = vertexBufferSize;
-	vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer, m_vertexBuffer, 1,
-	                &vertexCopyRegion);
-
-	VkBufferCopy indexCopyRegion{};
-	indexCopyRegion.size = indexBufferSize;
-	vkCmdCopyBuffer(commandBuffer, indexStagingBuffer, m_indexBuffer, 1,
-	                &indexCopyRegion);
-
-	m_context->endSingleTimeCommands(commandBuffer);
-
-	vmaDestroyBuffer(m_context->getAllocator(), vertexStagingBuffer,
-	                 vertexStagingAllocation);
-	vmaDestroyBuffer(m_context->getAllocator(), indexStagingBuffer,
-	                 indexStagingAllocation);
-}
-
 void RenderSystem::flushMeshUploads() {
 	if (!m_meshBufferDirty) return;
-	if (!m_allVertices.empty() && !m_allIndices.empty()) {
-		uploadMeshData(m_allVertices, m_allIndices);
+
+	const VkDeviceSize newVertexBytes =
+	    sizeof(Vertex) * (m_allVertices.size() - m_uploadedVertexCount);
+	const VkDeviceSize newIndexBytes =
+	    sizeof(uint32_t) * (m_allIndices.size() - m_uploadedIndexCount);
+
+	if (newVertexBytes == 0 && newIndexBytes == 0) {
+		m_meshBufferDirty = false;
+		return;
 	}
+
+	// Grow buffers if needed (2x policy)
+	// Recorded into the same command buffer as the append below.
+	VkCommandBuffer cmd = m_context->beginSingleTimeCommands();
+
+	std::vector<OldBufferAllocation> toDestroy;
+
+	auto growIfNeeded = [&](DeviceBuffer& buf, VkDeviceSize required) {
+		if (buf.size + required <= buf.capacity) return;
+		VkDeviceSize newCapacity = buf.capacity;
+		while (newCapacity < buf.size + required) newCapacity *= 2;
+		OldBufferAllocation old = buf.grow(*m_context, newCapacity, cmd);
+		toDestroy.push_back(buf.grow(*m_context, newCapacity, cmd));
+	};
+
+	growIfNeeded(m_vertexBuffer, newVertexBytes);
+	growIfNeeded(m_indexBuffer, newIndexBytes);
+
+	// Stage and append new vertices
+	if (newVertexBytes > 0) {
+		VkBuffer vertStaging;
+		VmaAllocation vertStagingAlloc;
+		VmaAllocationInfo vertStagingResult{};
+
+		VkBufferCreateInfo stagingInfo{};
+		stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		stagingInfo.size = newVertexBytes;
+		stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VmaAllocationCreateInfo stagingAllocInfo{};
+		stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		stagingAllocInfo.flags =
+		    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+		    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+		if (vmaCreateBuffer(m_context->getAllocator(), &stagingInfo,
+		                    &stagingAllocInfo, &vertStaging, &vertStagingAlloc,
+		                    &vertStagingResult) != VK_SUCCESS) {
+			throw std::runtime_error(
+			    "flushMeshUploads: failed to create vertex staging buffer");
+		}
+
+		memcpy(vertStagingResult.pMappedData,
+		       m_allVertices.data() + m_uploadedVertexCount, newVertexBytes);
+
+		m_vertexBuffer.appendFromStaging(cmd, vertStaging, newVertexBytes);
+
+		// Staging destroyed after submit
+		vmaDestroyBuffer(m_context->getAllocator(), vertStaging,
+		                 vertStagingAlloc);
+	}
+
+	// Stage and append new indices
+	if (newIndexBytes > 0) {
+		VkBuffer idxStaging;
+		VmaAllocation idxStagingAlloc;
+		VmaAllocationInfo idxStagingResult{};
+
+		VkBufferCreateInfo stagingInfo{};
+		stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		stagingInfo.size = newIndexBytes;
+		stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VmaAllocationCreateInfo stagingAllocInfo{};
+		stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		stagingAllocInfo.flags =
+		    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+		    VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+		if (vmaCreateBuffer(m_context->getAllocator(), &stagingInfo,
+		                    &stagingAllocInfo, &idxStaging, &idxStagingAlloc,
+		                    &idxStagingResult) != VK_SUCCESS) {
+			throw std::runtime_error(
+			    "flushMeshUploads: failed to create index staging buffer");
+		}
+
+		memcpy(idxStagingResult.pMappedData,
+		       m_allIndices.data() + m_uploadedIndexCount, newIndexBytes);
+
+		m_indexBuffer.appendFromStaging(cmd, idxStaging, newIndexBytes);
+
+		vmaDestroyBuffer(m_context->getAllocator(), idxStaging,
+		                 idxStagingAlloc);
+	}
+
+	m_context->endSingleTimeCommands(cmd);
+
+	for (auto& old : toDestroy)
+		vmaDestroyBuffer(m_context->getAllocator(), old.buffer, old.allocation);
+
+	m_uploadedVertexCount = static_cast<uint32_t>(m_allVertices.size());
+	m_uploadedIndexCount = static_cast<uint32_t>(m_allIndices.size());
+	m_meshBufferDirty = false;
 }
 
 uint32_t RenderSystem::loadMesh(const std::string& filepath) {

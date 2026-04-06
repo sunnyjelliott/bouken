@@ -89,10 +89,11 @@ void RenderSystem::recordDepthPrepass(VkCommandBuffer commandBuffer,
 	VkRect2D scissor{{0, 0}, extent};
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	VkBuffer vertexBuffers[] = {m_vertexBuffer};
+	VkBuffer vertexBuffers[] = {m_vertexBuffer.buffer};
 	VkDeviceSize offsets[] = {0};
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-	vkCmdBindIndexBuffer(commandBuffer, m_indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(commandBuffer, m_indexBuffer.buffer, 0,
+	                     VK_INDEX_TYPE_UINT32);
 
 	for (const RenderItem& item : m_renderItems) {
 		auto it = m_meshes.find(item.meshID);
@@ -156,10 +157,11 @@ void RenderSystem::recordGeometryPass(VkCommandBuffer commandBuffer,
 	VkRect2D scissor{{0, 0}, extent};
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	VkBuffer vertexBuffers[] = {m_vertexBuffer};
+	VkBuffer vertexBuffers[] = {m_vertexBuffer.buffer};
 	VkDeviceSize offsets[] = {0};
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-	vkCmdBindIndexBuffer(commandBuffer, m_indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(commandBuffer, m_indexBuffer.buffer, 0,
+	                     VK_INDEX_TYPE_UINT32);
 
 	// Bind frame data — set 0, constant for all draws in this pass
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,

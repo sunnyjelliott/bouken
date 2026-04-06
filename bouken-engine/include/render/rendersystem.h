@@ -1,6 +1,7 @@
 #pragma once
 #include "camera.h"
 #include "entity.h"
+#include "gpu/devicebuffer.h"
 #include "pch.h"
 #include "render/rendertarget.h"
 #include "swapchain.h"
@@ -165,11 +166,18 @@ class RenderSystem {
 	std::vector<Vertex> m_allVertices;
 	std::vector<uint32_t> m_allIndices;
 	bool m_meshBufferDirty = false;
+	uint32_t m_uploadedVertexCount = 0;
+	uint32_t m_uploadedIndexCount = 0;
 
-	VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
-	VmaAllocation m_vertexBufferAllocation = VK_NULL_HANDLE;
-	VkBuffer m_indexBuffer = VK_NULL_HANDLE;
-	VmaAllocation m_indexBufferAllocation = VK_NULL_HANDLE;
+	DeviceBuffer m_vertexBuffer;
+	DeviceBuffer m_indexBuffer;
+
+	// Initial GPU buffer reservation.
+	// TODO: Select based on VkPhysicalDeviceLimits or scene budget estimate.
+	static constexpr VkDeviceSize VERTEX_BUFFER_INITIAL_CAPACITY =
+	    32 * 1024 * 1024;  // 32 MB
+	static constexpr VkDeviceSize INDEX_BUFFER_INITIAL_CAPACITY =
+	    16 * 1024 * 1024;  // 16 MB
 
 	VkSampler m_gbufferSampler = VK_NULL_HANDLE;
 

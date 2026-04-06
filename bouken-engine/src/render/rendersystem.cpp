@@ -60,10 +60,8 @@ void RenderSystem::cleanup() {
 	vkDestroyFence(m_context->getDevice(), m_inFlightFence, nullptr);
 
 	// Mesh buffers
-	vmaDestroyBuffer(m_context->getAllocator(), m_indexBuffer,
-	                 m_indexBufferAllocation);
-	vmaDestroyBuffer(m_context->getAllocator(), m_vertexBuffer,
-	                 m_vertexBufferAllocation);
+	m_vertexBuffer.destroy(*m_context);
+	m_indexBuffer.destroy(*m_context);
 
 	// Material UBOs
 	for (size_t i = 0; i < m_materialUBOs.size(); i++) {
@@ -188,46 +186,37 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 }
 
 void RenderSystem::createMeshBuffers() {
-	// Load built-in meshes
+	// Allocate persistent device-local buffers upfront.
+	m_vertexBuffer.allocate(*m_context, VERTEX_BUFFER_INITIAL_CAPACITY,
+	                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	m_indexBuffer.allocate(*m_context, INDEX_BUFFER_INITIAL_CAPACITY,
+	                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-	// Mesh 0: Cube
-	auto cubeGeom = Primitives::createCube(1.0f);
-	m_meshes[m_nextMeshID++] = {
-	    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
-	    .vertexCount = static_cast<uint32_t>(cubeGeom.vertices.size()),
-	    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
-	    .indexCount = static_cast<uint32_t>(cubeGeom.indices.size())};
-	m_allVertices.insert(m_allVertices.end(), cubeGeom.vertices.begin(),
-	                     cubeGeom.vertices.end());
-	m_allIndices.insert(m_allIndices.end(), cubeGeom.indices.begin(),
-	                    cubeGeom.indices.end());
+	// Register built-in primitive meshes into the CPU mirror.
+	// Uploaded to GPU in one flush below.
 
-	// Mesh 1: Sphere
-	auto sphereGeom = Primitives::createSphere(1.0f, 16, 16);
-	m_meshes[m_nextMeshID++] = {
-	    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
-	    .vertexCount = static_cast<uint32_t>(sphereGeom.vertices.size()),
-	    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
-	    .indexCount = static_cast<uint32_t>(sphereGeom.indices.size())};
-	m_allVertices.insert(m_allVertices.end(), sphereGeom.vertices.begin(),
-	                     sphereGeom.vertices.end());
-	m_allIndices.insert(m_allIndices.end(), sphereGeom.indices.begin(),
-	                    sphereGeom.indices.end());
+	auto registerMesh = [&](const std::vector<Vertex>& verts,
+	                        const std::vector<uint32_t>& inds) {
+		m_meshes[m_nextMeshID++] = {
+		    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
+		    .vertexCount = static_cast<uint32_t>(verts.size()),
+		    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
+		    .indexCount = static_cast<uint32_t>(inds.size())};
+		m_allVertices.insert(m_allVertices.end(), verts.begin(), verts.end());
+		m_allIndices.insert(m_allIndices.end(), inds.begin(), inds.end());
+	};
 
-	// Mesh 2: Cone
-	auto coneGeom = Primitives::createCone(1.0f, 2.0f, 16);
-	m_meshes[m_nextMeshID++] = {
-	    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
-	    .vertexCount = static_cast<uint32_t>(coneGeom.vertices.size()),
-	    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
-	    .indexCount = static_cast<uint32_t>(coneGeom.indices.size())};
-	m_allVertices.insert(m_allVertices.end(), coneGeom.vertices.begin(),
-	                     coneGeom.vertices.end());
-	m_allIndices.insert(m_allIndices.end(), coneGeom.indices.begin(),
-	                    coneGeom.indices.end());
+	registerMesh(Primitives::createCube(1.0f).vertices,
+	             Primitives::createCube(1.0f).indices);  // Mesh 0: Cube
+	registerMesh(
+	    Primitives::createSphere(1.0f, 16, 16).vertices,
+	    Primitives::createSphere(1.0f, 16, 16).indices);  // Mesh 1: Sphere
+	registerMesh(
+	    Primitives::createCone(1.0f, 2.0f, 16).vertices,
+	    Primitives::createCone(1.0f, 2.0f, 16).indices);  // Mesh 2: Cone
 
-	// Upload to GPU
-	uploadMeshData(m_allVertices, m_allIndices);
+	m_meshBufferDirty = true;
+	flushMeshUploads();
 }
 
 void RenderSystem::createCommandBuffer() {
