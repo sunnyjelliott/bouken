@@ -1,6 +1,5 @@
 #pragma once
-#include "pch.h"
-#include "world.h"
+#include "usdmeshprocessor.h"
 
 class World;
 class RenderSystem;
@@ -80,7 +79,8 @@ class SceneLoader {
 	static Entity traverseUsdPrim(
 	    const UsdPrim& prim, World& world, RenderSystem& renderSystem,
 	    const std::unordered_map<SdfPath, uint32_t, SdfPath::Hash>& materialMap,
-	    Entity parent, UsdGeomXformCache& xformCache);
+	    Entity parent, UsdGeomXformCache& xformCache,
+	    std::vector<MeshWorkItem>& outWorkItems);
 	static void extractUsdTransform(const UsdPrim& prim, Transform& transform);
 	static bool isUsdGeometry(const UsdPrim& prim);
 	static uint32_t createMeshFromUsdGeom(const UsdPrim& prim,
