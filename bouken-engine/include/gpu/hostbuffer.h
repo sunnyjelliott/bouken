@@ -6,9 +6,10 @@
 // in active GPU use when grown (called outside of frame submission).
 struct HostBuffer : GpuBuffer {
 	void* mapped = nullptr;
+	VkBufferUsageFlags usage = 0;
 
 	void allocate(VulkanContext& context, VkDeviceSize capacity,
-	              VkBufferUsageFlags usage);
+	              VkBufferUsageFlags bufUsage);
 
 	// Returns old allocation for caller to destroy after confirming GPU is
 	// idle. Logs on grow.

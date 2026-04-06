@@ -3,7 +3,7 @@
 #include "vulkancontext.h"
 
 void HostBuffer::allocate(VulkanContext& context, VkDeviceSize cap,
-                          VkBufferUsageFlags usage) {
+                          VkBufferUsageFlags bufUsage) {
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = cap;
@@ -24,6 +24,7 @@ void HostBuffer::allocate(VulkanContext& context, VkDeviceSize cap,
 	mapped = result.pMappedData;
 	capacity = cap;
 	size = 0;
+	usage = bufUsage;
 	memset(mapped, 0, capacity);
 }
 
@@ -38,8 +39,7 @@ OldBufferAllocation HostBuffer::grow(VulkanContext& context,
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = newCapacity;
-	bufferInfo.usage =
-	    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;  // preserved by caller
+	bufferInfo.usage = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo allocInfo{};
