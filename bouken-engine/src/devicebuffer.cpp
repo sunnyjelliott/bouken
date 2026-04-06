@@ -39,8 +39,7 @@ void DeviceBuffer::appendFromStaging(VkCommandBuffer cmdBuffer,
 }
 
 OldBufferAllocation DeviceBuffer::grow(VulkanContext& context,
-                                       VkDeviceSize newCapacity,
-                                       VkCommandBuffer cmdBuffer) {
+                                       VkDeviceSize newCapacity) {
 	std::cout << "DeviceBuffer: growing " << capacity << " -> " << newCapacity
 	          << " bytes" << std::endl;
 	// TODO: Candidate for structured debug logging system.
@@ -66,14 +65,18 @@ OldBufferAllocation DeviceBuffer::grow(VulkanContext& context,
 	capacity = newCapacity;
 	size = oldSize;
 
-	// Blit existing content into the new buffer
+	// Blit existing content into the new buffer, submit, and wait.
+	// This must complete before the caller issues further commands
+	// against the new buffer, and before the old buffer is destroyed.
 	if (oldSize > 0) {
+		VkCommandBuffer cmd = context.beginSingleTimeCommands();
 		VkBufferCopy region{};
 		region.size = oldSize;
-		vkCmdCopyBuffer(cmdBuffer, old.buffer, buffer, 1, &region);
+		vkCmdCopyBuffer(cmd, old.buffer, buffer, 1, &region);
+		context.endSingleTimeCommands(cmd);  // blocks until idle
 	}
 
-	return old;
+	return old;  // caller destroys after this returns - GPU is already idle
 }
 
 void DeviceBuffer::destroy(VulkanContext& context) {

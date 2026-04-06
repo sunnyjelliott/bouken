@@ -21,8 +21,7 @@ struct DeviceBuffer : GpuBuffer {
 	// Returns old handles for deferred destruction after submit completes.
 	// Logs on grow.
 	// TODO: Candidate for structured debug logging system.
-	OldBufferAllocation grow(VulkanContext& context, VkDeviceSize newCapacity,
-	                         VkCommandBuffer cmdBuffer);
+	OldBufferAllocation grow(VulkanContext& context, VkDeviceSize newCapacity);
 
 	void destroy(VulkanContext& context);
 };
