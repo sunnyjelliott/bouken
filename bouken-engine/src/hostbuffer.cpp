@@ -7,7 +7,7 @@ void HostBuffer::allocate(VulkanContext& context, VkDeviceSize cap,
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = cap;
-	bufferInfo.usage = usage;
+	bufferInfo.usage = bufUsage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo allocInfo{};
