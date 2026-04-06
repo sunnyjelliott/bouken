@@ -2,7 +2,7 @@
 #include "gpubuffer.h"
 
 // HOST_VISIBLE | persistently mapped. Written directly by the CPU each frame.
-// Grow is a blocking reallocate + memcpy — safe because host buffers are not
+// Grow is a blocking reallocate + memcpy - safe because host buffers are not
 // in active GPU use when grown (called outside of frame submission).
 struct HostBuffer : GpuBuffer {
 	void* mapped = nullptr;

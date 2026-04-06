@@ -10,7 +10,7 @@ layout(location = 3) in vec3 v_ws_tangent;
 layout(location = 4) in vec3 v_ws_bitangent;
 
 // -------------------------------------------------------
-// Material textures — set 2
+// Material textures - set 2
 // -------------------------------------------------------
 layout(set = 2, binding = 0) uniform sampler2D u_albedoMap;
 layout(set = 2, binding = 1) uniform sampler2D u_normalMap;
@@ -135,7 +135,7 @@ void main() {
     out_normals = octEncode(ws_normal);
 
     // GBuffer2: roughness, ao, specular (constant for now), materialID
-    // materialID packed as normalised byte — 0 for now, lighting pass reads it
+    // materialID packed as normalised byte - 0 for now, lighting pass reads it
     out_roughnessAOSpecID = vec4(roughness, ao, DEFAULT_SPECULAR, 0.0);
 
     // GBuffer3: emissive + flags

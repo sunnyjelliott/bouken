@@ -206,14 +206,13 @@ void RenderSystem::createMeshBuffers() {
 		m_allIndices.insert(m_allIndices.end(), inds.begin(), inds.end());
 	};
 
-	registerMesh(Primitives::createCube(1.0f).vertices,
-	             Primitives::createCube(1.0f).indices);  // Mesh 0: Cube
-	registerMesh(
-	    Primitives::createSphere(1.0f, 16, 16).vertices,
-	    Primitives::createSphere(1.0f, 16, 16).indices);  // Mesh 1: Sphere
-	registerMesh(
-	    Primitives::createCone(1.0f, 2.0f, 16).vertices,
-	    Primitives::createCone(1.0f, 2.0f, 16).indices);  // Mesh 2: Cone
+	auto cube = Primitives::createCube(1.0f);
+	auto sphere = Primitives::createSphere(1.0f, 16, 16);
+	auto cone = Primitives::createCone(1.0f, 2.0f, 16);
+
+	registerMesh(cube.vertices, cube.indices);      // Mesh 0: Cube
+	registerMesh(sphere.vertices, sphere.indices);  // Mesh 1: Sphere
+	registerMesh(cone.vertices, cone.indices);      // Mesh 2: Cone
 
 	m_meshBufferDirty = true;
 	flushMeshUploads();
@@ -290,7 +289,7 @@ void RenderSystem::gatherRenderItems(World& world,
 		}
 	}
 
-	// Front-to-back — smallest depth value first
+	// Front-to-back - smallest depth value first
 	std::sort(m_renderItems.begin(), m_renderItems.end(),
 	          [](const RenderItem& a, const RenderItem& b) {
 		          return a.depth < b.depth;

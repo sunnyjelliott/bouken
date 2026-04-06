@@ -30,7 +30,7 @@ layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
 };
 
 // -------------------------------------------------------
-// Frame data — set 0
+// Frame data - set 0
 // Must match FrameUBO in framedata.h
 // -------------------------------------------------------
 layout(set = 0, binding = 0) uniform FrameData {
@@ -46,7 +46,7 @@ layout(set = 0, binding = 0) uniform FrameData {
 } u_frame;
 
 // -------------------------------------------------------
-// Output — HDR color
+// Output - HDR color
 // -------------------------------------------------------
 layout(location = 0) out vec4 out_hdrColor;
 
@@ -59,7 +59,7 @@ const float EPSILON     = 0.0001;
 const vec3  AMBIENT_COLOR   = vec3(0.03, 0.03, 0.04); // dim cool ambient
 
 // -------------------------------------------------------
-// Octahedral decode — inverse of geometry pass encode
+// Octahedral decode - inverse of geometry pass encode
 // -------------------------------------------------------
 vec3 octDecode(vec2 encoded) {
     vec3 n    = vec3(encoded.x, encoded.y,
@@ -112,7 +112,7 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
 // -------------------------------------------------------
 float G_SmithGGX(float NoV, float NoL, float roughness) {
     float r  = roughness + 1.0;
-    float k  = (r * r) / 8.0; // Disney remapping — reduces hotspot at low roughness
+    float k  = (r * r) / 8.0; // Disney remapping - reduces hotspot at low roughness
     float gV = NoV / (NoV * (1.0 - k) + k);
     float gL = NoL / (NoL * (1.0 - k) + k);
     return gV * gL;
@@ -130,7 +130,7 @@ vec3 evaluateBRDF(vec3 N, vec3 V, vec3 L,
     float NoH = max(dot(N, H), 0.0);
     float VoH = max(dot(V, H), 0.0);
 
-    // F0 — base reflectance
+    // F0 - base reflectance
     // Dielectrics use 0.04, metals use base color
     vec3 F0 = mix(vec3(0.04), baseColor, metallic);
 
@@ -141,7 +141,7 @@ vec3 evaluateBRDF(vec3 N, vec3 V, vec3 L,
 
     vec3 specular = (D * F * G) / (4.0 * NoV * NoL);
 
-    // Diffuse — energy conserving
+    // Diffuse - energy conserving
     // Metals have no diffuse contribution
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     vec3 diffuse = kD * baseColor * INV_PI;
@@ -193,19 +193,19 @@ void main() {
                         * light.colorAndIntensity.w;
 
         if (light.type == 0u) {
-            // Directional — no attenuation, direction stored in positionAndRadius.xyz
+            // Directional - no attenuation, direction stored in positionAndRadius.xyz
             vec3 L = normalize(-light.positionAndRadius.xyz);
             directLight += evaluateBRDF(ws_normal, V, L,
                                         baseColor, metallic, roughness)
                         * lightColor;
 
         } else if (light.type == 1u) {
-            // Point — inverse square attenuation
+            // Point - inverse square attenuation
             vec3  toLight = light.positionAndRadius.xyz - ws_position;
             float dist    = length(toLight);
             float radius  = light.positionAndRadius.w;
 
-            // Windowed inverse square — clean falloff at radius boundary
+            // Windowed inverse square - clean falloff at radius boundary
             float attenuation = pow(max(1.0 - pow(dist / radius, 4.0), 0.0), 2.0)
                             / (dist * dist + 1.0);
 
@@ -217,7 +217,7 @@ void main() {
             }
 
         } else if (light.type == 2u) {
-            // Spot — point light with angular falloff
+            // Spot - point light with angular falloff
             vec3  toLight = light.positionAndRadius.xyz - ws_position;
             float dist    = length(toLight);
             float radius  = light.positionAndRadius.w;
@@ -243,7 +243,7 @@ void main() {
     }
 
     // -------------------------------------------------------
-    // Ambient — very simple, modulated by AO
+    // Ambient - very simple, modulated by AO
     // Will be replaced by IBL when cubemap arrives
     // -------------------------------------------------------
     vec3 ambient = AMBIENT_COLOR * baseColor * ao;

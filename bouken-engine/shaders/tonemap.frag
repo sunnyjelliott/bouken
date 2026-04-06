@@ -6,12 +6,12 @@
 layout(location = 0) in vec2 v_uv;
 
 // -------------------------------------------------------
-// HDR input — set 0 (tonemap pass only uses one set)
+// HDR input - set 0 (tonemap pass only uses one set)
 // -------------------------------------------------------
 layout(set = 0, binding = 0) uniform sampler2D u_hdrBuffer;
 
 // -------------------------------------------------------
-// Output — LDR color for presentation
+// Output - LDR color for presentation
 // -------------------------------------------------------
 layout(location = 0) out vec4 out_color;
 
@@ -37,7 +37,7 @@ vec3 tonemapACES(vec3 x) {
 }
 
 // -------------------------------------------------------
-// Reinhard — kept for debug comparison
+// Reinhard - kept for debug comparison
 // Uncomment and swap in main() if needed
 // -------------------------------------------------------
 // vec3 tonemapReinhard(vec3 x) {
@@ -46,7 +46,7 @@ vec3 tonemapACES(vec3 x) {
 
 // -------------------------------------------------------
 // sRGB gamma correction
-// Applied after tonemapping — converts linear to display space
+// Applied after tonemapping - converts linear to display space
 // -------------------------------------------------------
 vec3 linearToSRGB(vec3 color) {
     return pow(color, vec3(INV_GAMMA));

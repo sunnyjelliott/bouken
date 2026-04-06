@@ -1,6 +1,6 @@
-#include "sceneloader.h"
 #include "material.h"
 #include "materialmanager.h"
+#include "sceneloader.h"
 #include "texturemanager.h"
 
 void SceneLoader::parseUsdMaterials(
@@ -107,7 +107,7 @@ std::string SceneLoader::resolveInputTexturePath(const UsdShadeInput& input,
 
 	UsdPrim sourcePrim = source.GetPrim();
 
-	// Case 1: Connected to NodeGraph — walk through potentially nested graphs
+	// Case 1: Connected to NodeGraph - walk through potentially nested graphs
 	if (sourcePrim.IsA<UsdShadeNodeGraph>()) {
 		UsdShadeConnectableAPI curSource = source;
 		TfToken curSourceName = sourceName;

@@ -38,7 +38,7 @@ void RenderTarget::create(VulkanContext& context, VmaAllocator allocator,
 		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
 		nameInfo.objectHandle = reinterpret_cast<uint64_t>(m_image);
 		nameInfo.pObjectName = desc.debugName.data();
-		// No-op if the extension isn't loaded — context guards this
+		// No-op if the extension isn't loaded - context guards this
 		context.setDebugName(nameInfo);
 	}
 

@@ -59,7 +59,7 @@ void Application::initVulkan() {
 	m_textureManager.initialize(&m_vulkanTextureBackend);
 	m_materialManager.initialize();
 
-	m_lightSystem.initialize(m_context, m_context.getAllocator());
+	m_lightSystem.initialize(m_context);
 	m_renderSystem.initialize(m_context, m_swapChain, m_lightSystem);
 }
 

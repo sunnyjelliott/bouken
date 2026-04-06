@@ -173,7 +173,7 @@ void VulkanTextureBackend::createTextureImage(const TextureCreateInfo& info,
 	                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 	if (mipLevels > 1) {
-		// Blit chain — each level blits from the previous
+		// Blit chain - each level blits from the previous
 		// After each blit, transition the source level to SHADER_READ_ONLY
 		int32_t mipWidth = static_cast<int32_t>(info.width);
 		int32_t mipHeight = static_cast<int32_t>(info.height);
@@ -213,7 +213,7 @@ void VulkanTextureBackend::createTextureImage(const TextureCreateInfo& info,
 			               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
 			               VK_FILTER_LINEAR);
 
-			// Transition level i-1 to SHADER_READ_ONLY — done with it
+			// Transition level i-1 to SHADER_READ_ONLY - done with it
 			barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -223,7 +223,7 @@ void VulkanTextureBackend::createTextureImage(const TextureCreateInfo& info,
 			                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
 			                     nullptr, 0, nullptr, 1, &barrier);
 
-			// Halve dimensions for next level — clamp to 1
+			// Halve dimensions for next level - clamp to 1
 			if (mipWidth > 1) mipWidth /= 2;
 			if (mipHeight > 1) mipHeight /= 2;
 		}
@@ -241,7 +241,7 @@ void VulkanTextureBackend::createTextureImage(const TextureCreateInfo& info,
 		                     nullptr, 0, nullptr, 1, &barrier);
 
 	} else {
-		// No mipmaps — single transition to SHADER_READ_ONLY
+		// No mipmaps - single transition to SHADER_READ_ONLY
 		barrier.subresourceRange.baseMipLevel = 0;
 		barrier.subresourceRange.levelCount = 1;
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;

@@ -1,6 +1,6 @@
-#include "sceneloader.h"
 #include "material.h"
 #include "rendersystem.h"
+#include "sceneloader.h"
 #include "transform.h"
 
 Entity SceneLoader::traverseUsdPrim(
@@ -68,7 +68,7 @@ Entity SceneLoader::traverseUsdPrim(
 					subset.GetIndicesAttr().Get(&faceIndices);
 
 					MeshWorkItem item;
-					item.meshData = meshData;  // VtArray CoW — cheap copy
+					item.meshData = meshData;  // VtArray CoW - cheap copy
 					item.faceIndices = std::move(faceIndices);
 					item.worldMat = worldMat;
 					item.entity = subsetEntity;
@@ -106,7 +106,7 @@ Entity SceneLoader::traverseUsdPrim(
 				outWorkItems.push_back(std::move(item));
 			}
 		} else {
-			// Primitive geometry — inline fast-path, no work item needed
+			// Primitive geometry - inline fast-path, no work item needed
 			uint32_t meshID =
 			    createMeshFromUsdGeom(prim, renderSystem, worldMat);
 			MeshRenderer renderer;

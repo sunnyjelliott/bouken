@@ -391,7 +391,7 @@ void RenderSystem::createMaterialDescriptorSets(
 			continue;
 		}
 
-		// Upload scalar data immediately — won't change unless material is
+		// Upload scalar data immediately - won't change unless material is
 		// edited
 		MaterialConstants scalars = material.toConstants();
 		memcpy(uboAllocResult.pMappedData, &scalars, sizeof(MaterialConstants));

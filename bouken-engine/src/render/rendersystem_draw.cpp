@@ -14,7 +14,7 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 		throw std::runtime_error("Failed to begin recording command buffer!");
 	}
 
-	// Compute per-frame camera data once — shared across all passes
+	// Compute per-frame camera data once - shared across all passes
 	const VkExtent2D extent = swapChain.getExtent();
 	const float aspect = static_cast<float>(extent.width) / extent.height;
 	const glm::mat4 view = cameraSystem.getViewMatrix(world);
@@ -163,7 +163,7 @@ void RenderSystem::recordGeometryPass(VkCommandBuffer commandBuffer,
 	vkCmdBindIndexBuffer(commandBuffer, m_indexBuffer.buffer, 0,
 	                     VK_INDEX_TYPE_UINT32);
 
-	// Bind frame data — set 0, constant for all draws in this pass
+	// Bind frame data - set 0, constant for all draws in this pass
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 	                        m_geometry.layout, 0, 1,
 	                        &m_frameSets[m_currentImageIndex], 0, nullptr);
@@ -172,7 +172,7 @@ void RenderSystem::recordGeometryPass(VkCommandBuffer commandBuffer,
 		auto it = m_meshes.find(item.meshID);
 		if (it == m_meshes.end()) continue;
 
-		// Bind material — set 2
+		// Bind material - set 2
 		if (item.descriptorSet != VK_NULL_HANDLE) {
 			vkCmdBindDescriptorSets(
 			    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -237,7 +237,7 @@ void RenderSystem::recordLightingPass(VkCommandBuffer commandBuffer) {
 	    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lighting.layout, 0,
 	    static_cast<uint32_t>(sets.size()), sets.data(), 0, nullptr);
 
-	// Fullscreen triangle — 3 vertices, no vertex buffer
+	// Fullscreen triangle - 3 vertices, no vertex buffer
 	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(commandBuffer);

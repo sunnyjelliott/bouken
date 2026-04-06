@@ -113,7 +113,7 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 			                         item.entity, item.parentEntity,
 			                         item.materialID};
 		    },
-		    std::move(item)  // move into the lambda — avoids copying VtArrays
+		    std::move(item)  // move into the lambda - avoids copying VtArrays
 		    ));
 	}
 

@@ -1,10 +1,9 @@
 #pragma once
+#include "gpu/hostbuffer.h"
 #include "light.h"
 #include "pch.h"
 #include "world.h"
 
-typedef struct VmaAllocation_T* VmaAllocation;
-typedef struct VmaAllocator_T* VmaAllocator;
 class VulkanContext;
 
 // GPU-side representation - std430 layout
@@ -20,34 +19,21 @@ struct GPULight {
 
 class LightSystem {
    public:
-	void initialize(VulkanContext& context, VmaAllocator allocator);
+	void initialize(VulkanContext& context);
 	void cleanup();
 
-	// Gather Light+Transform components, build and upload GPULight array
-	// Called once per frame before RenderSystem::drawFrame
 	void update(World& world);
 
-	// RenderSystem reads these to write the descriptor set
-	VkBuffer getBuffer() const { return m_buffer; }
-	VkDeviceSize getBufferSize() const { return m_bufferSize; }
+	VkBuffer getBuffer() const { return m_buffer.buffer; }
+	VkDeviceSize getBufferSize() const { return m_buffer.capacity; }
 	uint32_t getLightCount() const { return m_lightCount; }
 
    private:
-	void createBuffer(uint32_t maxLights);
-
 	VulkanContext* m_context = nullptr;
-	VmaAllocator m_allocator = nullptr;
-
-	VkBuffer m_buffer = VK_NULL_HANDLE;
-	VmaAllocation m_allocation = VK_NULL_HANDLE;
-	void* m_mapped = nullptr;
-	VkDeviceSize m_bufferSize = 0;
-
+	HostBuffer m_buffer;
 	uint32_t m_lightCount = 0;
 
-	// TODO: Dynamic resizing - currently fixed at initialization.
-	// Exceeding MAX_LIGHTS silently drops lights with a logged warning.
-	// Resize strategy: grow-only double-capacity recreate + descriptor
-	// re-write.
+	// Initial light buffer reservation.
+	// TODO: Select based on scene light budget or config.
 	static constexpr uint32_t MAX_LIGHTS = 256;
 };

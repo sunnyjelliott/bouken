@@ -130,7 +130,7 @@ void RenderSystem::createDepthPrepass() {
 	    VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-	// No color blend state — no color attachments
+	// No color blend state - no color attachments
 	VkPipelineColorBlendStateCreateInfo colorBlending{};
 	colorBlending.sType =
 	    VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -335,7 +335,7 @@ void RenderSystem::createGeometryPass() {
 	    VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-	// One blend attachment per color attachment — all passthrough
+	// One blend attachment per color attachment - all passthrough
 	VkPipelineColorBlendAttachmentState blendPassthrough{};
 	blendPassthrough.colorWriteMask =
 	    VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
@@ -367,7 +367,7 @@ void RenderSystem::createGeometryPass() {
 
 	std::array<VkDescriptorSetLayout, 3> setLayouts = {
 	    m_frameSetLayout,     // set 0: frame data (view, proj, camera pos)
-	    m_objectSetLayout,    // set 1: stub — keeps slot aligned with other
+	    m_objectSetLayout,    // set 1: stub - keeps slot aligned with other
 	                          // passes
 	    m_materialSetLayout,  // set 2: material textures + scalars
 	};
@@ -413,7 +413,7 @@ void RenderSystem::createGeometryPass() {
 
 void RenderSystem::createLightingPass() {
 	// -------------------------------------------------------
-	// Render pass — one HDR color attachment, no depth
+	// Render pass - one HDR color attachment, no depth
 	// -------------------------------------------------------
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -473,7 +473,7 @@ void RenderSystem::createLightingPass() {
 	}
 
 	// -------------------------------------------------------
-	// Framebuffer — HDR target only
+	// Framebuffer - HDR target only
 	// -------------------------------------------------------
 	VkImageView hdrView = m_hdr.target.getImageView();
 
@@ -492,7 +492,7 @@ void RenderSystem::createLightingPass() {
 	}
 
 	// -------------------------------------------------------
-	// Pipeline — fullscreen triangle, no vertex input
+	// Pipeline - fullscreen triangle, no vertex input
 	// -------------------------------------------------------
 	auto vertCode = readFile("shaders/fullscreen_vert.spv");
 	auto fragCode = readFile("shaders/lighting_frag.spv");
@@ -507,7 +507,7 @@ void RenderSystem::createLightingPass() {
 	     VK_SHADER_STAGE_FRAGMENT_BIT, fragModule, "main", nullptr},
 	};
 
-	// No vertex input — fullscreen triangle generated in vertex shader
+	// No vertex input - fullscreen triangle generated in vertex shader
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType =
 	    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -604,7 +604,7 @@ void RenderSystem::createLightingPass() {
 
 void RenderSystem::createTonemapPass() {
 	// -------------------------------------------------------
-	// Render pass — swapchain image, no depth
+	// Render pass - swapchain image, no depth
 	// -------------------------------------------------------
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = m_swapChainFormat;
@@ -651,10 +651,10 @@ void RenderSystem::createTonemapPass() {
 	}
 
 	// Swapchain framebuffers are created by SwapChain::createFramebuffers,
-	// called with m_tonemap.renderPass — handled in initialize()
+	// called with m_tonemap.renderPass - handled in initialize()
 
 	// -------------------------------------------------------
-	// Pipeline — fullscreen triangle, reuses fullscreen_vert.spv
+	// Pipeline - fullscreen triangle, reuses fullscreen_vert.spv
 	// -------------------------------------------------------
 	auto vertCode = readFile("shaders/fullscreen_vert.spv");
 	auto fragCode = readFile("shaders/tonemap_frag.spv");
@@ -722,7 +722,7 @@ void RenderSystem::createTonemapPass() {
 	    static_cast<uint32_t>(dynamicStates.size());
 	dynamicState.pDynamicStates = dynamicStates.data();
 
-	// Set 1 only: HDR sampler — no frame data needed for tonemap
+	// Set 1 only: HDR sampler - no frame data needed for tonemap
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = 1;
