@@ -4,10 +4,10 @@
 #include "transform.h"
 
 Entity SceneLoader::traverseUsdPrim(
-    const UsdPrim& prim, World& world, RenderSystem& renderSystem,
+    const UsdPrim& prim, World& world, Entity parent, float sceneScale,
+    RenderSystem& renderSystem,
     const std::unordered_map<SdfPath, uint32_t, SdfPath::Hash>& materialMap,
-    Entity parent, UsdGeomXformCache& xformCache,
-    std::vector<MeshWorkItem>& outWorkItems) {
+    UsdGeomXformCache& xformCache, std::vector<MeshWorkItem>& outWorkItems) {
 	if (!prim.IsA<UsdGeomImageable>()) return NULL_ENTITY;
 
 	Entity entity = world.createEntity();
@@ -23,6 +23,7 @@ Entity SceneLoader::traverseUsdPrim(
 
 	if (isUsdGeometry(prim)) {
 		const glm::mat4 worldMat =
+		    glm::scale(glm::mat4(1.0f), glm::vec3(sceneScale)) *
 		    gfMatrixToGlm(xformCache.GetLocalToWorldTransform(prim));
 
 		if (prim.IsA<UsdGeomMesh>()) {
@@ -117,8 +118,8 @@ Entity SceneLoader::traverseUsdPrim(
 	}
 
 	for (const UsdPrim& child : prim.GetChildren()) {
-		traverseUsdPrim(child, world, renderSystem, materialMap, entity,
-		                xformCache, outWorkItems);
+		traverseUsdPrim(child, world, entity, sceneScale, renderSystem,
+		                materialMap, xformCache, outWorkItems);
 	}
 
 	return entity;

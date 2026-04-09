@@ -23,6 +23,6 @@ class CameraSystem {
 
 	float m_yaw = 0.0f;
 	float m_pitch = 0.0f;
-	float m_moveSpeed = 100.0f;
+	float m_moveSpeed = 5.0f;
 	float m_lookSpeed = 0.1f;
 };

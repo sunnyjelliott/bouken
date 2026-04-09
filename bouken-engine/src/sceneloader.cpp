@@ -60,6 +60,17 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 		return false;
 	}
 
+	float sceneScale = 1.0f;
+	if (options.applyMetersPerUnit) {
+		double metersPerUnit = 1.0;
+		stage->GetMetadata(TfToken("metersPerUnit"), &metersPerUnit);
+		sceneScale = static_cast<float>(metersPerUnit);
+		if (sceneScale != 1.0f) {
+			std::cout << "  Scene scale: " << sceneScale
+			          << " meters/unit - normalizing to meters" << std::endl;
+		}
+	}
+
 	// Get root prim
 	UsdPrim rootPrim = stage->GetPseudoRoot();
 	if (!rootPrim) {
@@ -81,8 +92,8 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 	std::vector<MeshWorkItem> workItems;
 	UsdGeomXformCache xformCache;
 	for (const UsdPrim& child : rootPrim.GetChildren()) {
-		traverseUsdPrim(child, world, renderSystem, materialMap,
-		                options.parentEntity, xformCache, workItems);
+		traverseUsdPrim(child, world, options.parentEntity, sceneScale,
+		                renderSystem, materialMap, xformCache, workItems);
 	}
 	std::cout << "  Traversal complete: " << workItems.size()
 	          << " meshes queued for processing" << std::endl;

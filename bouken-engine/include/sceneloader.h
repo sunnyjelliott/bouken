@@ -16,6 +16,7 @@ struct SceneLoadOptions {
 	SceneFormat format = SceneFormat::AUTO;
 	bool createHeirarchy = true;
 	Entity parentEntity = NULL_ENTITY;
+	bool applyMetersPerUnit = true;
 };
 
 struct MaterialTextureInfo {
@@ -77,10 +78,10 @@ class SceneLoader {
 
 	// USD Geometry
 	static Entity traverseUsdPrim(
-	    const UsdPrim& prim, World& world, RenderSystem& renderSystem,
+	    const UsdPrim& prim, World& world, Entity parent, float sceneScale,
+	    RenderSystem& renderSystem,
 	    const std::unordered_map<SdfPath, uint32_t, SdfPath::Hash>& materialMap,
-	    Entity parent, UsdGeomXformCache& xformCache,
-	    std::vector<MeshWorkItem>& outWorkItems);
+	    UsdGeomXformCache& xformCache, std::vector<MeshWorkItem>& outWorkItems);
 	static void extractUsdTransform(const UsdPrim& prim, Transform& transform);
 	static bool isUsdGeometry(const UsdPrim& prim);
 	static uint32_t createMeshFromUsdGeom(const UsdPrim& prim,

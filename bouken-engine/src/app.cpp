@@ -73,7 +73,7 @@ void Application::initScene() {
 	                     Transform{.position = glm::vec3(0.0f, 2.0f, 8.0f)});
 	m_world.addComponent(
 	    m_activeCamera,
-	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 10000.0f});
+	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 1000.0f});
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	// Test directional light - sun from above and slightly to the side
