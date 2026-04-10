@@ -76,22 +76,65 @@ void Application::initScene() {
 	    Camera{.fov = 45.0f, .nearPlane = 0.1f, .farPlane = 1000.0f});
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
-	// Test directional light - sun from above and slightly to the side
-	Entity sunLight = m_world.createEntity();
+	// Directional sun - warm, from above and to one side
+	Entity sun = m_world.createEntity();
 	Transform sunTransform{};
-	// Rotate to point down and forward - directional lights use -Z forward
 	sunTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-60.0f),  // pitch down
-	                        glm::radians(45.0f),   // yaw
-	                        0.0f));
+	    glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f), 0.0f));
 	sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
-	m_world.addComponent(sunLight, sunTransform);
+	m_world.addComponent(sun, sunTransform);
+	Light sunLight{};
+	sunLight.type = LightType::Directional;
+	sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
+	sunLight.intensity = 3.0f;
+	m_world.addComponent(sun, sunLight);
 
-	Light sun{};
-	sun.type = LightType::Directional;
-	sun.color = glm::vec3(1.0f, 0.98f, 0.95f);  // warm white
-	sun.intensity = 3.0f;
-	m_world.addComponent(sunLight, sun);
+	// Warm point light - center of courtyard, mid height
+	Entity fill = m_world.createEntity();
+	Transform fillTransform{};
+	fillTransform.position = glm::vec3(0.0f, 4.0f, 0.0f);
+	fillTransform.worldMatrix =
+	    glm::translate(glm::mat4(1.0f), fillTransform.position);
+	m_world.addComponent(fill, fillTransform);
+	Light fillLight{};
+	fillLight.type = LightType::Point;
+	fillLight.color = glm::vec3(1.0f, 0.85f, 0.6f);
+	fillLight.intensity = 200.0f;
+	fillLight.radius = 12.0f;
+	m_world.addComponent(fill, fillLight);
+
+	// Cool point light - opposite end of the colonnade
+	Entity cool = m_world.createEntity();
+	Transform coolTransform{};
+	coolTransform.position = glm::vec3(8.0f, 3.0f, 0.0f);
+	coolTransform.worldMatrix =
+	    glm::translate(glm::mat4(1.0f), coolTransform.position);
+	m_world.addComponent(cool, coolTransform);
+	Light coolLight{};
+	coolLight.type = LightType::Point;
+	coolLight.color = glm::vec3(0.6f, 0.8f, 1.0f);
+	coolLight.intensity = 150.0f;
+	coolLight.radius = 10.0f;
+	m_world.addComponent(cool, coolLight);
+
+	// Spot light - pointing down from above the entrance
+	Entity spot = m_world.createEntity();
+	Transform spotTransform{};
+	spotTransform.position = glm::vec3(-8.0f, 7.0f, 0.0f);
+	spotTransform.rotation =
+	    glm::quat(glm::vec3(glm::radians(-80.0f), 0.0f, 0.0f));
+	spotTransform.worldMatrix =
+	    glm::translate(glm::mat4(1.0f), spotTransform.position) *
+	    glm::mat4_cast(spotTransform.rotation);
+	m_world.addComponent(spot, spotTransform);
+	Light spotLight{};
+	spotLight.type = LightType::Spot;
+	spotLight.color = glm::vec3(1.0f, 1.0f, 0.9f);
+	spotLight.intensity = 500.0f;
+	spotLight.radius = 10.0f;
+	spotLight.innerAngle = 15.0f;
+	spotLight.outerAngle = 30.0f;
+	m_world.addComponent(spot, spotLight);
 
 	SceneLoadOptions options;
 	options.createHeirarchy = true;
