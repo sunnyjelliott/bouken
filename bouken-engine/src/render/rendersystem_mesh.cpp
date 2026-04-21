@@ -22,6 +22,13 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	m_allIndices.insert(m_allIndices.end(), indices.begin(), indices.end());
 	m_meshBufferDirty = true;
 
+	AABB aabb;
+	for (const Vertex& v : vertices) {
+		aabb.min = glm::min(aabb.min, v.position);
+		aabb.max = glm::max(aabb.max, v.position);
+	}
+	m_meshAABBs[meshID] = aabb;
+
 	return meshID;
 }
 
@@ -106,6 +113,11 @@ void RenderSystem::flushMeshUploads() {
 	m_meshBufferDirty = false;
 }
 
+AABB RenderSystem::getMeshAABB(uint32_t meshID) const {
+	auto it = m_meshAABBs.find(meshID);
+	return it != m_meshAABBs.end() ? it->second : AABB{};
+}
+
 uint32_t RenderSystem::loadMesh(const std::string& filepath) {
 	LoadedMesh loadedMesh = MeshLoader::loadOBJ(filepath);
 
@@ -121,8 +133,14 @@ uint32_t RenderSystem::loadMesh(const std::string& filepath) {
 	                     loadedMesh.vertices.end());
 	m_allIndices.insert(m_allIndices.end(), loadedMesh.indices.begin(),
 	                    loadedMesh.indices.end());
-
 	m_meshBufferDirty = true;
+
+	AABB aabb;
+	for (const Vertex& v : loadedMesh.vertices) {
+		aabb.min = glm::min(aabb.min, v.position);
+		aabb.max = glm::max(aabb.max, v.position);
+	}
+	m_meshAABBs[meshID] = aabb;
 
 	return meshID;
 }

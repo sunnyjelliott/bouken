@@ -4,6 +4,7 @@
 #include "gpu/devicebuffer.h"
 #include "pch.h"
 #include "render/rendertarget.h"
+#include "spatial.h"
 #include "swapchain.h"
 #include "vertex.h"
 #include "vulkancontext.h"
@@ -40,6 +41,8 @@ class RenderSystem {
 	                    const std::vector<uint32_t>& indices);
 
 	void flushMeshUploads();
+
+	AABB getMeshAABB(uint32_t meshID) const;
 
 	void createMaterialDescriptorSets(MaterialManager& materialManager,
 	                                  TextureManager& textureManager);
@@ -165,6 +168,7 @@ class RenderSystem {
 
 	std::vector<Vertex> m_allVertices;
 	std::vector<uint32_t> m_allIndices;
+	std::unordered_map<uint32_t, AABB> m_meshAABBs;
 	bool m_meshBufferDirty = false;
 	uint32_t m_uploadedVertexCount = 0;
 	uint32_t m_uploadedIndexCount = 0;

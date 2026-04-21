@@ -1,4 +1,5 @@
 #include "sceneloader.h"
+#include "boundingbox.h"
 #include "material.h"
 #include "materialmanager.h"
 #include "rendersystem.h"
@@ -120,9 +121,15 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 			                     vertices, indices);
 			    applyWorldTransform(vertices, item.worldMat);
 
-			    return ProcessedMesh{std::move(vertices), std::move(indices),
-			                         item.entity, item.parentEntity,
-			                         item.materialID};
+			    AABB aabb;
+			    for (const Vertex& v : vertices) {
+				    aabb.min = glm::min(aabb.min, v.position);
+				    aabb.max = glm::max(aabb.max, v.position);
+			    }
+
+			    return ProcessedMesh{
+			        std::move(vertices), std::move(indices), aabb,
+			        item.entity,         item.parentEntity,  item.materialID};
 		    },
 		    std::move(item)  // move into the lambda - avoids copying VtArrays
 		    ));
@@ -142,6 +149,10 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 		MaterialBinding binding;
 		binding.materialID = result.materialID;
 		world.addComponent(result.entity, binding);
+
+		BoundingBox bb;
+		bb.aabb = result.aabb;
+		world.addComponent(result.entity, bb);
 	}
 
 	auto processTime = std::chrono::high_resolution_clock::now();

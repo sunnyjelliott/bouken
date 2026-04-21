@@ -1,7 +1,17 @@
+#include "boundingbox.h"
 #include "material.h"
 #include "rendersystem.h"
 #include "sceneloader.h"
 #include "transform.h"
+
+static bool readUsdExtents(const UsdGeomMesh& mesh, glm::vec3& outMin,
+                           glm::vec3& outMax) {
+	VtArray<GfVec3f> extent;
+	if (!mesh.GetExtentAttr().Get(&extent) || extent.size() < 2) return false;
+	outMin = glm::vec3(extent[0][0], extent[0][1], extent[0][2]);
+	outMax = glm::vec3(extent[1][0], extent[1][1], extent[1][2]);
+	return true;
+}
 
 Entity SceneLoader::traverseUsdPrim(
     const UsdPrim& prim, World& world, Entity parent, float sceneScale,
@@ -114,6 +124,11 @@ Entity SceneLoader::traverseUsdPrim(
 			renderer.meshID = meshID;
 			world.addComponent(entity, renderer);
 			world.addComponent(entity, MaterialBinding{});
+
+			AABB localAABB = renderSystem.getMeshAABB(meshID);
+			BoundingBox bb;
+			bb.aabb = localAABB.transformed(worldMat);
+			world.addComponent(entity, bb);
 		}
 	}
 

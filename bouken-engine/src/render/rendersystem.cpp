@@ -2,7 +2,9 @@
 
 #include <vk_mem_alloc.h>
 
+#include "boundingbox.h"
 #include "camerasystem.h"
+#include "frustum.h"
 #include "materialmanager.h"
 #include "primitives.h"
 #include "world.h"
@@ -197,13 +199,21 @@ void RenderSystem::createMeshBuffers() {
 
 	auto registerMesh = [&](const std::vector<Vertex>& verts,
 	                        const std::vector<uint32_t>& inds) {
-		m_meshes[m_nextMeshID++] = {
+		uint32_t id = m_nextMeshID++;
+		m_meshes[id] = {
 		    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
 		    .vertexCount = static_cast<uint32_t>(verts.size()),
 		    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
 		    .indexCount = static_cast<uint32_t>(inds.size())};
 		m_allVertices.insert(m_allVertices.end(), verts.begin(), verts.end());
 		m_allIndices.insert(m_allIndices.end(), inds.begin(), inds.end());
+
+		AABB aabb;
+		for (const Vertex& v : verts) {
+			aabb.min = glm::min(aabb.min, v.position);
+			aabb.max = glm::max(aabb.max, v.position);
+		}
+		m_meshAABBs[id] = aabb;
 	};
 
 	auto cube = Primitives::createCube(1.0f);
@@ -254,9 +264,14 @@ void RenderSystem::gatherRenderItems(World& world,
                                      MaterialManager& materialManager) {
 	m_renderItems.clear();
 
+	const VkExtent2D extent = m_swapChain->getExtent();
+	const float aspect = static_cast<float>(extent.width) / extent.height;
 	const glm::mat4 view = cameraSystem.getViewMatrix(world);
-	const glm::vec3 viewDir = glm::vec3(
-	    view[0][2], view[1][2], view[2][2]);  // third row = forward vector
+	const glm::mat4 projection =
+	    cameraSystem.getProjectionMatrix(world, aspect);
+	const glm::mat4 vp = projection * view;
+	const Frustum frustum = Frustum::fromViewProjection(vp);
+	const glm::vec3 viewDir = glm::vec3(view[0][2], view[1][2], view[2][2]);
 
 	for (Entity entity :
 	     world.view<Transform, MeshRenderer, MaterialBinding>()) {
@@ -272,6 +287,12 @@ void RenderSystem::gatherRenderItems(World& world,
 		if (material.opacity < 1.0f) continue;
 
 		if (!meshRenderer.visible) continue;
+
+		if (world.hasComponent<BoundingBox>(entity)) {
+			if (!frustum.intersects(
+			        world.getComponent<BoundingBox>(entity).aabb))
+				continue;
+		}
 
 		VkDescriptorSet descriptorSet =
 		    materialManager.getDescriptorSet(materialBinding.materialID);
