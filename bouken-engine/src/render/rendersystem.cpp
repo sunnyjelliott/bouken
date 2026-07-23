@@ -26,11 +26,16 @@ static uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
 	throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain,
-                              LightSystem& lightSystem) {
-	m_context = &context;
-	m_swapChain = &swapChain;
-	m_swapChainFormat = swapChain.getImageFormat();
+RenderSystem::RenderSystem(VulkanContext& context, SwapChain& swapchain,
+                           LightSystem& lightSystem,
+                           bouken::IBLSystem& iblSystem)
+    : m_context(context),
+      m_swapChain(swapchain),
+      m_lightSystem(lightSystem),
+      m_iblSystem(iblSystem) {}
+
+void RenderSystem::initialize() {
+	m_swapChainFormat = m_swapChain.getImageFormat();
 
 	createDepthResources();
 	createGBufferTargets();
@@ -40,14 +45,14 @@ void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain,
 	createDescriptorPool();
 	createFrameUBOs();
 	createFrameDescriptorSets();
-	createLightingDescriptorSet(lightSystem);
+	createLightingDescriptorSet();
 	createTonemapDescriptorSet();
 	createDepthPrepass();
 	createGeometryPass();
 	createGBufferFramebuffer();
 	createLightingPass();
 	createTonemapPass();
-	swapChain.createFramebuffers(m_tonemap.renderPass);
+	m_swapChain.createFramebuffers(m_tonemap.renderPass);
 	createMeshBuffers();
 	createCommandBuffer();
 	createSyncObjects();
@@ -55,92 +60,90 @@ void RenderSystem::initialize(VulkanContext& context, SwapChain& swapChain,
 
 void RenderSystem::cleanup() {
 	// Sync objects
-	vkDestroySemaphore(m_context->getDevice(), m_imageAvailableSemaphore,
+	vkDestroySemaphore(m_context.getDevice(), m_imageAvailableSemaphore,
 	                   nullptr);
-	vkDestroySemaphore(m_context->getDevice(), m_renderFinishedSemaphore,
+	vkDestroySemaphore(m_context.getDevice(), m_renderFinishedSemaphore,
 	                   nullptr);
-	vkDestroyFence(m_context->getDevice(), m_inFlightFence, nullptr);
+	vkDestroyFence(m_context.getDevice(), m_inFlightFence, nullptr);
 
 	// Mesh buffers
-	m_vertexBuffer.destroy(*m_context);
-	m_indexBuffer.destroy(*m_context);
+	m_vertexBuffer.destroy(m_context);
+	m_indexBuffer.destroy(m_context);
 
 	// Material UBOs
 	for (size_t i = 0; i < m_materialUBOs.size(); i++) {
-		vmaDestroyBuffer(m_context->getAllocator(), m_materialUBOs[i],
+		vmaDestroyBuffer(m_context.getAllocator(), m_materialUBOs[i],
 		                 m_materialUBOAllocations[i]);
 	}
 
 	// Frame UBOs
 	for (size_t i = 0; i < m_frameUBOs.size(); i++) {
-		vmaDestroyBuffer(m_context->getAllocator(), m_frameUBOs[i],
+		vmaDestroyBuffer(m_context.getAllocator(), m_frameUBOs[i],
 		                 m_frameUBOAllocations[i]);
 	}
 
 	// Descriptor pool (implicitly frees all sets)
-	vkDestroyDescriptorPool(m_context->getDevice(), m_descriptorPool, nullptr);
+	vkDestroyDescriptorPool(m_context.getDevice(), m_descriptorPool, nullptr);
 
 	// Samplers
-	vkDestroySampler(m_context->getDevice(), m_gbufferSampler, nullptr);
+	vkDestroySampler(m_context.getDevice(), m_gbufferSampler, nullptr);
 
 	// Pipelines and layouts
-	vkDestroyPipeline(m_context->getDevice(), m_depthPrepass.pipeline, nullptr);
-	vkDestroyPipelineLayout(m_context->getDevice(), m_depthPrepass.layout,
+	vkDestroyPipeline(m_context.getDevice(), m_depthPrepass.pipeline, nullptr);
+	vkDestroyPipelineLayout(m_context.getDevice(), m_depthPrepass.layout,
 	                        nullptr);
-	vkDestroyRenderPass(m_context->getDevice(), m_depthPrepass.renderPass,
+	vkDestroyRenderPass(m_context.getDevice(), m_depthPrepass.renderPass,
 	                    nullptr);
-	vkDestroyFramebuffer(m_context->getDevice(), m_depthPrepass.framebuffer,
+	vkDestroyFramebuffer(m_context.getDevice(), m_depthPrepass.framebuffer,
 	                     nullptr);
 
-	vkDestroyPipeline(m_context->getDevice(), m_geometry.pipeline, nullptr);
-	vkDestroyPipelineLayout(m_context->getDevice(), m_geometry.layout, nullptr);
-	vkDestroyRenderPass(m_context->getDevice(), m_geometry.renderPass, nullptr);
-	vkDestroyFramebuffer(m_context->getDevice(), m_gbuffer.framebuffer,
-	                     nullptr);
+	vkDestroyPipeline(m_context.getDevice(), m_geometry.pipeline, nullptr);
+	vkDestroyPipelineLayout(m_context.getDevice(), m_geometry.layout, nullptr);
+	vkDestroyRenderPass(m_context.getDevice(), m_geometry.renderPass, nullptr);
+	vkDestroyFramebuffer(m_context.getDevice(), m_gbuffer.framebuffer, nullptr);
 
-	vkDestroyPipeline(m_context->getDevice(), m_lighting.pipeline, nullptr);
-	vkDestroyPipelineLayout(m_context->getDevice(), m_lighting.layout, nullptr);
-	vkDestroyRenderPass(m_context->getDevice(), m_lighting.renderPass, nullptr);
-	vkDestroyFramebuffer(m_context->getDevice(), m_hdr.framebuffer, nullptr);
+	vkDestroyPipeline(m_context.getDevice(), m_lighting.pipeline, nullptr);
+	vkDestroyPipelineLayout(m_context.getDevice(), m_lighting.layout, nullptr);
+	vkDestroyRenderPass(m_context.getDevice(), m_lighting.renderPass, nullptr);
+	vkDestroyFramebuffer(m_context.getDevice(), m_hdr.framebuffer, nullptr);
 
-	vkDestroyPipeline(m_context->getDevice(), m_tonemap.pipeline, nullptr);
-	vkDestroyPipelineLayout(m_context->getDevice(), m_tonemap.layout, nullptr);
-	vkDestroyRenderPass(m_context->getDevice(), m_tonemap.renderPass, nullptr);
+	vkDestroyPipeline(m_context.getDevice(), m_tonemap.pipeline, nullptr);
+	vkDestroyPipelineLayout(m_context.getDevice(), m_tonemap.layout, nullptr);
+	vkDestroyRenderPass(m_context.getDevice(), m_tonemap.renderPass, nullptr);
 
 	// Descriptor set layouts
-	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_frameSetLayout,
+	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_frameSetLayout,
 	                             nullptr);
-	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_lightingSetLayout,
+	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_lightingSetLayout,
 	                             nullptr);
-	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_tonemapSetLayout,
+	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_tonemapSetLayout,
 	                             nullptr);
-	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_materialSetLayout,
+	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_materialSetLayout,
 	                             nullptr);
-	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_objectSetLayout,
+	vkDestroyDescriptorSetLayout(m_context.getDevice(), m_objectSetLayout,
 	                             nullptr);
 
 	// Render targets
-	m_depth.target.destroy(m_context->getDevice(), m_context->getAllocator());
-	m_gbuffer.baseColorMetallic.destroy(m_context->getDevice(),
-	                                    m_context->getAllocator());
-	m_gbuffer.normals.destroy(m_context->getDevice(),
-	                          m_context->getAllocator());
-	m_gbuffer.roughnessAOSpecID.destroy(m_context->getDevice(),
-	                                    m_context->getAllocator());
-	m_gbuffer.emissiveFlags.destroy(m_context->getDevice(),
-	                                m_context->getAllocator());
-	m_hdr.target.destroy(m_context->getDevice(), m_context->getAllocator());
+	m_depth.target.destroy(m_context.getDevice(), m_context.getAllocator());
+	m_gbuffer.baseColorMetallic.destroy(m_context.getDevice(),
+	                                    m_context.getAllocator());
+	m_gbuffer.normals.destroy(m_context.getDevice(), m_context.getAllocator());
+	m_gbuffer.roughnessAOSpecID.destroy(m_context.getDevice(),
+	                                    m_context.getAllocator());
+	m_gbuffer.emissiveFlags.destroy(m_context.getDevice(),
+	                                m_context.getAllocator());
+	m_hdr.target.destroy(m_context.getDevice(), m_context.getAllocator());
 }
 
 void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
                              const CameraSystem& cameraSystem,
                              MaterialManager& materialManager) {
-	vkWaitForFences(m_context->getDevice(), 1, &m_inFlightFence, VK_TRUE,
+	vkWaitForFences(m_context.getDevice(), 1, &m_inFlightFence, VK_TRUE,
 	                UINT64_MAX);
-	vkResetFences(m_context->getDevice(), 1, &m_inFlightFence);
+	vkResetFences(m_context.getDevice(), 1, &m_inFlightFence);
 
 	uint32_t imageIndex;
-	vkAcquireNextImageKHR(m_context->getDevice(), swapChain.getSwapChain(),
+	vkAcquireNextImageKHR(m_context.getDevice(), swapChain.getSwapChain(),
 	                      UINT64_MAX, m_imageAvailableSemaphore, VK_NULL_HANDLE,
 	                      &imageIndex);
 
@@ -169,7 +172,7 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	if (vkQueueSubmit(m_context->getGraphicsQueue(), 1, &submitInfo,
+	if (vkQueueSubmit(m_context.getGraphicsQueue(), 1, &submitInfo,
 	                  m_inFlightFence) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to submit draw command buffer!");
 	}
@@ -184,14 +187,14 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 	presentInfo.pSwapchains = swapChains;
 	presentInfo.pImageIndices = &imageIndex;
 
-	vkQueuePresentKHR(m_context->getPresentQueue(), &presentInfo);
+	vkQueuePresentKHR(m_context.getPresentQueue(), &presentInfo);
 }
 
 void RenderSystem::createMeshBuffers() {
 	// Allocate persistent device-local buffers upfront.
-	m_vertexBuffer.allocate(*m_context, VERTEX_BUFFER_INITIAL_CAPACITY,
+	m_vertexBuffer.allocate(m_context, VERTEX_BUFFER_INITIAL_CAPACITY,
 	                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-	m_indexBuffer.allocate(*m_context, INDEX_BUFFER_INITIAL_CAPACITY,
+	m_indexBuffer.allocate(m_context, INDEX_BUFFER_INITIAL_CAPACITY,
 	                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
 	// Register built-in primitive meshes into the CPU mirror.
@@ -231,11 +234,11 @@ void RenderSystem::createMeshBuffers() {
 void RenderSystem::createCommandBuffer() {
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = m_context->getCommandPool();
+	allocInfo.commandPool = m_context.getCommandPool();
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = 1;
 
-	if (vkAllocateCommandBuffers(m_context->getDevice(), &allocInfo,
+	if (vkAllocateCommandBuffers(m_context.getDevice(), &allocInfo,
 	                             &m_commandBuffer) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate command buffer!");
 	}
@@ -249,11 +252,11 @@ void RenderSystem::createSyncObjects() {
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-	if (vkCreateSemaphore(m_context->getDevice(), &semaphoreInfo, nullptr,
+	if (vkCreateSemaphore(m_context.getDevice(), &semaphoreInfo, nullptr,
 	                      &m_imageAvailableSemaphore) != VK_SUCCESS ||
-	    vkCreateSemaphore(m_context->getDevice(), &semaphoreInfo, nullptr,
+	    vkCreateSemaphore(m_context.getDevice(), &semaphoreInfo, nullptr,
 	                      &m_renderFinishedSemaphore) != VK_SUCCESS ||
-	    vkCreateFence(m_context->getDevice(), &fenceInfo, nullptr,
+	    vkCreateFence(m_context.getDevice(), &fenceInfo, nullptr,
 	                  &m_inFlightFence) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create synchronization objects!");
 	}
@@ -264,7 +267,7 @@ void RenderSystem::gatherRenderItems(World& world,
                                      MaterialManager& materialManager) {
 	m_renderItems.clear();
 
-	const VkExtent2D extent = m_swapChain->getExtent();
+	const VkExtent2D extent = m_swapChain.getExtent();
 	const float aspect = static_cast<float>(extent.width) / extent.height;
 	const glm::mat4 view = cameraSystem.getViewMatrix(world);
 	const glm::mat4 projection =
@@ -324,7 +327,7 @@ VkShaderModule RenderSystem::createShaderModule(const std::vector<char>& code) {
 	createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
 	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(m_context->getDevice(), &createInfo, nullptr,
+	if (vkCreateShaderModule(m_context.getDevice(), &createInfo, nullptr,
 	                         &shaderModule) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create shader module!");
 	}

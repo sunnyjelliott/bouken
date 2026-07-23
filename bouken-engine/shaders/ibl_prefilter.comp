@@ -1,0 +1,134 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform samplerCube u_envCubemap;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube u_prefilteredFace;
+
+layout(push_constant) uniform PushConstants {
+    uint  pc_faceSize;
+    uint  pc_sampleCount;
+    float pc_roughness;    // current mip's roughness value
+} pc;
+
+const float PI = 3.14159265359f;
+
+float radicalInverseVdC(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10f;
+}
+
+vec2 hammersley(uint i, uint n)
+{
+    return vec2(float(i) / float(n), radicalInverseVdC(i));
+}
+
+vec3 importanceSampleGGX(vec2 xi, vec3 N, float roughness)
+{
+    float a  = roughness * roughness;
+    float a2 = a * a;
+
+    float phi      = 2.0f * PI * xi.x;
+    float cosTheta = sqrt((1.0f - xi.y) / (1.0f + (a2 - 1.0f) * xi.y));
+    float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+    // Tangent-space half-vector
+    vec3 H_tangent = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+
+    // Build TBN to rotate into world space around N
+    vec3 up    = abs(N.z) < 0.999f ? vec3(0.0f, 0.0f, 1.0f) : vec3(1.0f, 0.0f, 0.0f);
+    vec3 right = normalize(cross(up, N));
+    vec3 fwd   = cross(N, right);
+
+    return normalize(right * H_tangent.x + fwd * H_tangent.y + N * H_tangent.z);
+}
+
+vec3 cubemapDir(uint face, vec2 uv)
+{
+    float u = uv.x, v = uv.y;
+    switch (face)
+    {
+        case 0: return normalize(vec3( 1.0,  -v,  -u));
+        case 1: return normalize(vec3(-1.0,  -v,   u));
+        case 2: return normalize(vec3(  u,  1.0,   v));
+        case 3: return normalize(vec3(  u, -1.0,  -v));
+        case 4: return normalize(vec3(  u,   -v,  1.0));
+        case 5: return normalize(vec3( -u,   -v, -1.0));
+        default: return vec3(0.0);
+    }
+}
+
+// GGX normal distribution - used for PDF-weighted mip bias during sampling
+float distributionGGX(float NdotH, float roughness)
+{
+    float a2    = roughness * roughness * roughness * roughness;
+    float denom = (NdotH * NdotH) * (a2 - 1.0f) + 1.0f;
+    return a2 / (PI * denom * denom);
+}
+
+void main()
+{
+    uint face   = gl_GlobalInvocationID.z;
+    uint texelX = gl_GlobalInvocationID.x;
+    uint texelY = gl_GlobalInvocationID.y;
+
+    if (texelX >= pc.pc_faceSize || texelY >= pc.pc_faceSize)
+        return;
+
+    vec2 uv = (vec2(texelX, texelY) + 0.5f) / float(pc.pc_faceSize) * 2.0f - 1.0f;
+    vec3 N  = cubemapDir(face, uv);
+
+    // For the prefilter we assume V == N == R (isotropic assumption).
+    // This is a known approximation that breaks down at grazing angles
+    // but is standard for real-time prefiltered IBL.
+    vec3 V = N;
+
+    vec3  prefilteredColor = vec3(0.0f);
+    float totalWeight      = 0.0f;
+
+    // Mip 0 (roughness == 0): delta function - copy source directly.
+    // Importance sampling degenerates at roughness 0, so we early-out.
+    if (pc.pc_roughness < 0.001f)
+    {
+        prefilteredColor = texture(u_envCubemap, N).rgb;
+        imageStore(u_prefilteredFace, ivec3(texelX, texelY, face),
+                   vec4(prefilteredColor, 1.0f));
+        return;
+    }
+
+    for (uint i = 0; i < pc.pc_sampleCount; ++i)
+    {
+        vec2 xi = hammersley(i, pc.pc_sampleCount);
+        vec3 H  = importanceSampleGGX(xi, N, pc.pc_roughness);
+        vec3 L  = normalize(2.0f * dot(V, H) * H - V);
+
+        float NdotL = max(dot(N, L), 0.0f);
+        if (NdotL <= 0.0f)
+            continue;
+
+        // Sample at a mip level derived from the PDF to reduce aliasing on
+        // high-frequency regions of the environment map.
+        // Reference: Colbert & Křivánek, "GPU-Based Importance Sampling"
+        float NdotH = max(dot(N, H), 0.0f);
+        float VdotH = max(dot(V, H), 0.0f);
+        float D     = distributionGGX(NdotH, pc.pc_roughness);
+        float pdf   = (D * NdotH / (4.0f * VdotH)) + 0.0001f;
+
+        float saTexel  = 4.0f * PI / (6.0f * float(pc.pc_faceSize * pc.pc_faceSize));
+        float saSample = 1.0f / (float(pc.pc_sampleCount) * pdf + 0.0001f);
+        float mipLevel = pc.pc_roughness == 0.0f ? 0.0f
+                       : 0.5f * log2(saSample / saTexel);
+
+        prefilteredColor += textureLod(u_envCubemap, L, mipLevel).rgb * NdotL;
+        totalWeight      += NdotL;
+    }
+
+    prefilteredColor = prefilteredColor / max(totalWeight, 0.0001f);
+    imageStore(u_prefilteredFace, ivec3(texelX, texelY, face),
+               vec4(prefilteredColor, 1.0f));
+}

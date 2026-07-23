@@ -36,6 +36,7 @@ BackendTextureHandle VulkanTextureBackend::createTexture(
 
 	return handle;
 }
+
 void VulkanTextureBackend::destroyTexture(BackendTextureHandle handle) {
 	auto it = m_textures.find(handle);
 	if (it == m_textures.end()) {

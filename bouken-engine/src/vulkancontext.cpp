@@ -413,6 +413,41 @@ void VulkanContext::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkFreeCommandBuffers(m_device, m_commandPool, 1, &commandBuffer);
 }
 
+VkDescriptorPool VulkanContext::createDescriptorPool(
+    const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets,
+    VkDescriptorPoolCreateFlags flags) {
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.flags = flags;
+	poolInfo.maxSets = maxSets;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &pool) !=
+	    VK_SUCCESS) {
+		throw std::runtime_error(
+		    "VulkanContext: failed to create descriptor pool!");
+	}
+	return pool;
+}
+
+VkDescriptorSet VulkanContext::allocateDescriptorSet(
+    VkDescriptorPool pool, VkDescriptorSetLayout layout) {
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = pool;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = &layout;
+
+	VkDescriptorSet set = VK_NULL_HANDLE;
+	if (vkAllocateDescriptorSets(m_device, &allocInfo, &set) != VK_SUCCESS) {
+		throw std::runtime_error(
+		    "VulkanContext: failed to allocate descriptor set!");
+	}
+	return set;
+}
+
 void VulkanContext::setDebugName(
     const VkDebugUtilsObjectNameInfoEXT& nameInfo) {
 	if (m_vkSetDebugUtilsObjectNameEXT) {

@@ -214,11 +214,18 @@ set(SHADERS
     ${SHADER_SOURCE_DIR}/depth.vert
     ${SHADER_SOURCE_DIR}/fullscreen.vert
     ${SHADER_SOURCE_DIR}/geometry.vert
+    ${SHADER_SOURCE_DIR}/skybox.vert
 
     ${SHADER_SOURCE_DIR}/shader.frag
     ${SHADER_SOURCE_DIR}/geometry.frag
     ${SHADER_SOURCE_DIR}/lighting.frag
     ${SHADER_SOURCE_DIR}/tonemap.frag
+    ${SHADER_SOURCE_DIR}/skybox.frag
+    
+    ${SHADER_SOURCE_DIR}/ibl_brdf_lut.comp
+    ${SHADER_SOURCE_DIR}/ibl_equirect_to_cubemap.comp
+    ${SHADER_SOURCE_DIR}/ibl_prefilter.comp
+    ${SHADER_SOURCE_DIR}/ibl_sh_project.comp
 )
 
 foreach(SHADER ${SHADERS})

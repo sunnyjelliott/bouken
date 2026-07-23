@@ -1,0 +1,52 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D u_equirect;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube u_cubemap;
+
+layout(push_constant) uniform PushConstants {
+    uint pc_faceSize;
+} pc;
+
+const vec2 INV_ATAN = vec2(0.1591f, 0.3183f);
+
+vec3 faceDirToWorld(uint face, vec2 uv) {
+    float u = uv.x;
+    float v = uv.y;
+    switch(face) {
+        case 0: return normalize(vec3(1.0, -v, -u));
+        case 1: return normalize(vec3(-1.0, -v, u));
+        case 2: return normalize(vec3(u, 1.0, v));
+        case 3: return normalize(vec3(u, -1.0, -v));
+        case 4: return normalize(vec3(u, -v, 1.0));
+        case 5: return normalize(vec3(-u, -v, -1.0));
+        default: return vec3(0.0);
+    }
+}
+
+vec2 dirToEquirect(vec3 dir) {
+    vec2 uv = vec2(atan(dir.z, dir.x), asin(dir.y));
+    uv *= INV_ATAN;
+    uv += 0.5f;
+    return uv;
+}
+
+void main() {
+    uint face = gl_GlobalInvocationID.z;
+    uint texel_x = gl_GlobalInvocationID.x;
+    uint texel_y = gl_GlobalInvocationID.y;
+
+    if (texel_x >= pc.pc_faceSize || texel_y >= pc.pc_faceSize) {
+        return;
+    }
+
+    vec2 uv = (vec2(texel_x, texel_y) + 0.5f) / float(pc.pc_faceSize) * 2.0f - 1.0f;
+
+    vec3 dir = faceDirToWorld(face, uv);
+    vec2 equirect_uv = dirToEquirect(dir);
+
+    vec4 color = texture(u_equirect, equirect_uv);
+    imageStore(u_cubemap, ivec3(texel_x, texel_y, face), color);
+}

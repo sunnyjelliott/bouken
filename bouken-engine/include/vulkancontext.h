@@ -41,6 +41,13 @@ class VulkanContext {
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
+	VkDescriptorPool createDescriptorPool(
+	    const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets,
+	    VkDescriptorPoolCreateFlags flags = 0);
+
+	VkDescriptorSet allocateDescriptorSet(VkDescriptorPool pool,
+	                                      VkDescriptorSetLayout layout);
+
 	void setDebugName(const VkDebugUtilsObjectNameInfoEXT& nameInfo);
 	bool isValidationEnabled() const { return m_enableValidationLayers; }
 

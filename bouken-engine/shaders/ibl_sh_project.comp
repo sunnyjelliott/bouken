@@ -1,0 +1,165 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Pass 1: read cubemap, write partial sums
+// Pass 2: read partial sums, write final coefficients
+layout(set = 0, binding = 0) uniform samplerCube u_envCubemap;
+
+// Intermediate buffer: numWorkgroups × 9 coefficients × vec4 (std430)
+layout(set = 0, binding = 1, scalar) buffer PartialSums {
+    vec4 data[]; // [workgroupIndex * 9 + coeffIndex] = vec4(r, g, b, weight)
+} u_partialSums;
+
+// Final output UBO written in pass 2
+layout(set = 0, binding = 2, scalar) buffer SHOutput {
+    vec4 coeffs[9];
+} u_shOutput;
+
+layout(push_constant) uniform PushConstants {
+    uint pc_pass;           // 0 = accumulate, 1 = reduce
+    uint pc_faceSize;
+    uint pc_numWorkgroups;  // total workgroup count from pass 1, needed for pass 2
+} pc;
+
+// --- SH basis functions (L0 and L1 and L2) ---
+// Evaluated at a unit direction vector
+void shBasis(vec3 dir, out float b[9])
+{
+    float x = dir.x, y = dir.y, z = dir.z;
+
+    // L0
+    b[0] = 0.282095f;
+    // L1
+    b[1] = 0.488603f * y;
+    b[2] = 0.488603f * z;
+    b[3] = 0.488603f * x;
+    // L2
+    b[4] = 1.092548f * x * y;
+    b[5] = 1.092548f * y * z;
+    b[6] = 0.315392f * (3.0f * z * z - 1.0f);
+    b[7] = 1.092548f * x * z;
+    b[8] = 0.546274f * (x * x - y * y);
+}
+
+vec3 cubemapDir(uint face, vec2 uv)
+{
+    float u = uv.x, v = uv.y;
+    switch (face)
+    {
+        case 0: return normalize(vec3( 1.0,  -v,  -u));
+        case 1: return normalize(vec3(-1.0,  -v,   u));
+        case 2: return normalize(vec3(  u,  1.0,   v));
+        case 3: return normalize(vec3(  u, -1.0,  -v));
+        case 4: return normalize(vec3(  u,   -v,  1.0));
+        case 5: return normalize(vec3( -u,   -v, -1.0));
+        default: return vec3(0.0);
+    }
+}
+
+// Differential solid angle weight for a cubemap texel.
+// Accounts for the non-uniform mapping between texel area and solid angle.
+float texelSolidAngle(vec2 uv)
+{
+    float u = uv.x, v = uv.y;
+    float d = 1.0f + u * u + v * v;
+    return 4.0f / (sqrt(d) * d);
+}
+
+shared vec4 s_partials[9][256]; // 9 coefficients, up to 16×16 threads
+
+void main()
+{
+    uint localIdx = gl_LocalInvocationIndex;
+    uint groupIdx = gl_WorkGroupID.z * (gl_NumWorkGroups.x * gl_NumWorkGroups.y)
+                  + gl_WorkGroupID.y * gl_NumWorkGroups.x
+                  + gl_WorkGroupID.x;
+
+    // -----------------------------------------------------------------------
+    // PASS 1 — per-texel SH accumulation into shared memory, then workgroup sum
+    // -----------------------------------------------------------------------
+    if (pc.pc_pass == 0)
+    {
+        uint face   = gl_GlobalInvocationID.z;
+        uint texelX = gl_GlobalInvocationID.x;
+        uint texelY = gl_GlobalInvocationID.y;
+
+        // Initialise shared memory
+        for (int c = 0; c < 9; ++c)
+            s_partials[c][localIdx] = vec4(0.0f);
+        barrier();
+
+        if (texelX < pc.pc_faceSize && texelY < pc.pc_faceSize)
+        {
+            vec2 uv  = (vec2(texelX, texelY) + 0.5f) / float(pc.pc_faceSize) * 2.0f - 1.0f;
+            vec3 dir = cubemapDir(face, uv);
+            vec3 col = texture(u_envCubemap, dir).rgb;
+            float dw = texelSolidAngle(uv);
+
+            float b[9];
+            shBasis(dir, b);
+
+            for (int c = 0; c < 9; ++c)
+                s_partials[c][localIdx] = vec4(col * b[c] * dw, dw);
+        }
+
+        barrier();
+
+        // Tree reduction within workgroup
+        for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
+        {
+            if (localIdx < stride)
+                for (int c = 0; c < 9; ++c)
+                    s_partials[c][localIdx] += s_partials[c][localIdx + stride];
+            barrier();
+        }
+
+        // Thread 0 writes this workgroup's partial sum to the intermediate buffer
+        if (localIdx == 0)
+            for (int c = 0; c < 9; ++c)
+                u_partialSums.data[groupIdx * 9 + c] = s_partials[c][0];
+    }
+
+    // -----------------------------------------------------------------------
+    // PASS 2 — reduce all workgroup partial sums to final SH coefficients
+    // -----------------------------------------------------------------------
+    else {
+        // Grid-stride accumulation: each of the 256 threads sums every
+        // partial-sum entry at stride 256 across the full pass-1 output
+        // (up to numWorkgroups entries, which can far exceed 256 - e.g.
+        // 6144 at 512^2 x 6 faces), before feeding into the same
+        // shared-memory tree reduction as before.
+        vec4 localSum[9];
+        for (int c = 0; c < 9; ++c)
+            localSum[c] = vec4(0.0f);
+
+        for (uint i = localIdx; i < pc.pc_numWorkgroups; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y)
+        {
+            for (int c = 0; c < 9; ++c)
+                localSum[c] += u_partialSums.data[i * 9 + c];
+        }
+
+        for (int c = 0; c < 9; ++c)
+            s_partials[c][localIdx] = localSum[c];
+        barrier();
+
+        // Tree reduction across the 256 thread-local sums - unchanged from before
+        for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
+        {
+            if (localIdx < stride)
+                for (int c = 0; c < 9; ++c)
+                    s_partials[c][localIdx] += s_partials[c][localIdx + stride];
+            barrier();
+        }
+
+        if (localIdx == 0)
+        {
+            float totalWeight = s_partials[0][0].w;
+            float normFactor  = (totalWeight > 0.0f) ? (4.0f * 3.14159265f / totalWeight) : 1.0f;
+            for (int c = 0; c < 9; ++c)
+                u_shOutput.coeffs[c] = vec4(s_partials[c][0].rgb * normFactor, 0.0f);
+        }
+    }
+}

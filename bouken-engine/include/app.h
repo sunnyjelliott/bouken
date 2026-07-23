@@ -1,6 +1,7 @@
 #pragma once
 #include "camerasystem.h"
 #include "glfwinputbackend.h"
+#include "lighting/iblsystem.h"
 #include "lighting/lightsystem.h"
 #include "materialmanager.h"
 #include "pch.h"
@@ -14,6 +15,7 @@
 
 class Application {
    public:
+	Application();
 	void run();
 
    private:
@@ -29,7 +31,9 @@ class Application {
 
 	VulkanContext m_context;
 	SwapChain m_swapChain;
+	bouken::IBLSystem m_iblSystem;
 	RenderSystem m_renderSystem;
+
 	TransformSystem m_transformSystem;
 	World m_world;
 	CameraSystem m_cameraSystem;

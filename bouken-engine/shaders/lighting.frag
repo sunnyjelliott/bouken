@@ -13,6 +13,10 @@ layout(set = 1, binding = 1) uniform sampler2D u_gbuffer1; // oct-encoded normal
 layout(set = 1, binding = 2) uniform sampler2D u_gbuffer2; // roughness + ao + specular + id
 layout(set = 1, binding = 3) uniform sampler2D u_gbuffer3; // emissive + flags
 layout(set = 1, binding = 4) uniform sampler2D u_depth;    // depth buffer
+layout(set = 1, binding = 6) uniform SHCoefficients { vec4 c[9]; } u_sh; // SH Coefficients
+layout(set = 1, binding = 7) uniform samplerCube u_prefilteredEnv; // prefiltered environment map
+layout(set = 1, binding = 8) uniform sampler2D   u_brdfLut; // BRDF LUT
+layout(set = 1, binding = 9) uniform samplerCube u_envCubemap; // final cubemap
 
 struct LightData {
     vec4     positionAndRadius;   // xyz = pos (point/spot) or dir (directional), w = radius
@@ -149,6 +153,47 @@ vec3 evaluateBRDF(vec3 N, vec3 V, vec3 L,
     return (diffuse + specular) * NoL;
 }
 
+// -------------------------------------------------------
+// L2 SH irradiance approximation
+// -------------------------------------------------------
+vec3 evaluateSHIrradiance(vec3 N) {
+    float x = N.x, y = N.y, z = N.z;
+
+    vec3 irradiance =
+        u_sh.c[0].rgb * 0.282095f
+
+      + u_sh.c[1].rgb * 0.488603f * y
+      + u_sh.c[2].rgb * 0.488603f * z
+      + u_sh.c[3].rgb * 0.488603f * x
+
+      + u_sh.c[4].rgb * 1.092548f * x * y
+      + u_sh.c[5].rgb * 1.092548f * y * z
+      + u_sh.c[6].rgb * 0.315392f * (3.0f * z * z - 1.0f)
+      + u_sh.c[7].rgb * 1.092548f * x * z
+      + u_sh.c[8].rgb * 0.546274f * (x * x - y * y);
+
+    return max(irradiance, vec3(0.0f));
+}
+
+// -------------------------------------------------------
+// IBL Specular Evaluation
+// -------------------------------------------------------
+const uint  IBL_PREFILTERED_MIP_LEVELS = 5;
+
+vec3 evaluateIBLSpecular(vec3 N, vec3 V, float roughness, vec3 F0) {
+    vec3  R      = reflect(-V, N);
+    float NdotV  = max(dot(N, V), 0.0f);
+
+    // Sample prefiltered env at the mip level corresponding to roughness
+    float mipLevel       = roughness * float(IBL_PREFILTERED_MIP_LEVELS - 1);
+    vec3  prefilteredColor = textureLod(u_prefilteredEnv, R, mipLevel).rgb;
+
+    // Split-sum second term
+    vec2 brdf = texture(u_brdfLut, vec2(NdotV, roughness)).rg;
+
+    return prefilteredColor * (F0 * brdf.r + brdf.g);
+}
+
 void main() {
     // -------------------------------------------------------
     // Sample G-buffer
@@ -243,10 +288,19 @@ void main() {
     }
 
     // -------------------------------------------------------
-    // Ambient - very simple, modulated by AO
-    // Will be replaced by IBL when cubemap arrives
+    // IBL
     // -------------------------------------------------------
-    vec3 ambient = AMBIENT_COLOR * baseColor * ao;
+    vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+
+    float NoV_ibl = max(dot(ws_normal, V), 0.0);
+    vec3 F_approx = F0 + (1.0 - F0) * pow(1.0 - NoV_ibl, 5.0);
+
+    vec3 kD_ibl = (1.0 - F_approx) * (1.0 - metallic);
+    vec3 ibl_diffuse = kD_ibl * evaluateSHIrradiance(ws_normal) * baseColor * ao;
+
+    vec3 ibl_specular = evaluateIBLSpecular(ws_normal, V, roughness, F0) * ao;
+
+    vec3 ambient = ibl_diffuse + ibl_specular;
 
     // -------------------------------------------------------
     // Emissive contribution

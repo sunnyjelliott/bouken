@@ -50,15 +50,15 @@ void RenderSystem::flushMeshUploads() {
 		if (buf.size + required <= buf.capacity) return;
 		VkDeviceSize newCapacity = buf.capacity;
 		while (newCapacity < buf.size + required) newCapacity *= 2;
-		OldBufferAllocation old = buf.grow(*m_context, newCapacity);
-		vmaDestroyBuffer(m_context->getAllocator(), old.buffer, old.allocation);
+		OldBufferAllocation old = buf.grow(m_context, newCapacity);
+		vmaDestroyBuffer(m_context.getAllocator(), old.buffer, old.allocation);
 	};
 
 	growIfNeeded(m_vertexBuffer, newVertexBytes);
 	growIfNeeded(m_indexBuffer, newIndexBytes);
 
 	// Single command buffer for both appends
-	VkCommandBuffer cmd = m_context->beginSingleTimeCommands();
+	VkCommandBuffer cmd = m_context.beginSingleTimeCommands();
 
 	auto stageAndAppend = [&](DeviceBuffer& buf, const void* data,
 	                          VkDeviceSize dataSize) {
@@ -78,7 +78,7 @@ void RenderSystem::flushMeshUploads() {
 		    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
 		    VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-		if (vmaCreateBuffer(m_context->getAllocator(), &stagingInfo,
+		if (vmaCreateBuffer(m_context.getAllocator(), &stagingInfo,
 		                    &stagingAllocInfo, &staging, &stagingAlloc,
 		                    &stagingResult) != VK_SUCCESS) {
 			throw std::runtime_error(
@@ -103,10 +103,10 @@ void RenderSystem::flushMeshUploads() {
 		    m_indexBuffer, m_allIndices.data() + m_uploadedIndexCount,
 		    newIndexBytes));
 
-	m_context->endSingleTimeCommands(cmd);  // GPU idle after this
+	m_context.endSingleTimeCommands(cmd);  // GPU idle after this
 
 	for (auto& [buf, alloc] : stagingToDestroy)
-		vmaDestroyBuffer(m_context->getAllocator(), buf, alloc);
+		vmaDestroyBuffer(m_context.getAllocator(), buf, alloc);
 
 	m_uploadedVertexCount = static_cast<uint32_t>(m_allVertices.size());
 	m_uploadedIndexCount = static_cast<uint32_t>(m_allIndices.size());

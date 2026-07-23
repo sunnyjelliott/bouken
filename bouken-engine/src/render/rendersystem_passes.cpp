@@ -57,7 +57,7 @@ void RenderSystem::createDepthPrepass() {
 	renderPassInfo.dependencyCount = 1;
 	renderPassInfo.pDependencies = &dependency;
 
-	if (vkCreateRenderPass(m_context->getDevice(), &renderPassInfo, nullptr,
+	if (vkCreateRenderPass(m_context.getDevice(), &renderPassInfo, nullptr,
 	                       &m_depthPrepass.renderPass) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create depth prepass render pass!");
 	}
@@ -69,11 +69,11 @@ void RenderSystem::createDepthPrepass() {
 	framebufferInfo.renderPass = m_depthPrepass.renderPass;
 	framebufferInfo.attachmentCount = 1;
 	framebufferInfo.pAttachments = &depthView;
-	framebufferInfo.width = m_swapChain->getExtent().width;
-	framebufferInfo.height = m_swapChain->getExtent().height;
+	framebufferInfo.width = m_swapChain.getExtent().width;
+	framebufferInfo.height = m_swapChain.getExtent().height;
 	framebufferInfo.layers = 1;
 
-	if (vkCreateFramebuffer(m_context->getDevice(), &framebufferInfo, nullptr,
+	if (vkCreateFramebuffer(m_context.getDevice(), &framebufferInfo, nullptr,
 	                        &m_depthPrepass.framebuffer) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create depth prepass framebuffer!");
 	}
@@ -156,7 +156,7 @@ void RenderSystem::createDepthPrepass() {
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
+	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_depthPrepass.layout) != VK_SUCCESS) {
 		throw std::runtime_error(
 		    "Failed to create depth prepass pipeline layout!");
@@ -178,13 +178,13 @@ void RenderSystem::createDepthPrepass() {
 	pipelineInfo.renderPass = m_depthPrepass.renderPass;
 	pipelineInfo.subpass = 0;
 
-	if (vkCreateGraphicsPipelines(m_context->getDevice(), VK_NULL_HANDLE, 1,
+	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1,
 	                              &pipelineInfo, nullptr,
 	                              &m_depthPrepass.pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create depth prepass pipeline!");
 	}
 
-	vkDestroyShaderModule(m_context->getDevice(), vertShaderModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), vertShaderModule, nullptr);
 }
 
 void RenderSystem::createGeometryPass() {
@@ -271,7 +271,7 @@ void RenderSystem::createGeometryPass() {
 	renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
 	renderPassInfo.pDependencies = dependencies.data();
 
-	if (vkCreateRenderPass(m_context->getDevice(), &renderPassInfo, nullptr,
+	if (vkCreateRenderPass(m_context.getDevice(), &renderPassInfo, nullptr,
 	                       &m_geometry.renderPass) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create geometry render pass!");
 	}
@@ -380,7 +380,7 @@ void RenderSystem::createGeometryPass() {
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
+	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_geometry.layout) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create geometry pipeline layout!");
 	}
@@ -401,14 +401,14 @@ void RenderSystem::createGeometryPass() {
 	pipelineInfo.renderPass = m_geometry.renderPass;
 	pipelineInfo.subpass = 0;
 
-	if (vkCreateGraphicsPipelines(m_context->getDevice(), VK_NULL_HANDLE, 1,
+	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1,
 	                              &pipelineInfo, nullptr,
 	                              &m_geometry.pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create geometry pipeline!");
 	}
 
-	vkDestroyShaderModule(m_context->getDevice(), fragShaderModule, nullptr);
-	vkDestroyShaderModule(m_context->getDevice(), vertShaderModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), fragShaderModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), vertShaderModule, nullptr);
 }
 
 void RenderSystem::createLightingPass() {
@@ -425,20 +425,41 @@ void RenderSystem::createLightingPass() {
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+	// Depth - read-only, preserved from the depth prepass/geometry pass for
+	// skybox occlusion. Geometry pass leaves depth in READ_ONLY (its own
+	// finalLayout), so that's what we inherit as our initialLayout.
+	VkAttachmentDescription depthAttachment{};
+	depthAttachment.format = m_depth.format;
+	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.initialLayout =
+	    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	depthAttachment.finalLayout =
+	    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	std::array<VkAttachmentDescription, 2> attachments = {colorAttachment,
+	                                                      depthAttachment};
+
 	VkAttachmentReference colorRef{};
 	colorRef.attachment = 0;
 	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthRef{};
+	depthRef.attachment = 1;
+	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	VkSubpassDescription subpass{};
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &colorRef;
+	subpass.pDepthStencilAttachment = &depthRef;
 
-	// G-buffer reads must be complete before lighting samples them,
-	// and HDR write must be complete before tonemap samples it
-	std::array<VkSubpassDependency, 2> dependencies{};
+	std::array<VkSubpassDependency, 3> dependencies{};
 
-	// Geometry pass → lighting pass
+	// Geometry pass -> lighting pass (color)
 	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[0].dstSubpass = 0;
 	dependencies[0].srcStageMask =
@@ -448,7 +469,7 @@ void RenderSystem::createLightingPass() {
 	dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-	// Lighting pass → tonemap pass
+	// Lighting pass -> tonemap pass
 	dependencies[1].srcSubpass = 0;
 	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[1].srcStageMask =
@@ -458,35 +479,46 @@ void RenderSystem::createLightingPass() {
 	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
+	// Depth write (geometry pass) -> lighting pass (skybox depth test reads it)
+	dependencies[2].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[2].dstSubpass = 0;
+	dependencies[2].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[2].srcAccessMask =
+	    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[2].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependencies[2].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+	dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = 1;
-	renderPassInfo.pAttachments = &colorAttachment;
+	renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+	renderPassInfo.pAttachments = attachments.data();
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
 	renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
 	renderPassInfo.pDependencies = dependencies.data();
 
-	if (vkCreateRenderPass(m_context->getDevice(), &renderPassInfo, nullptr,
+	if (vkCreateRenderPass(m_context.getDevice(), &renderPassInfo, nullptr,
 	                       &m_lighting.renderPass) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create lighting render pass!");
 	}
 
-	// -------------------------------------------------------
-	// Framebuffer - HDR target only
-	// -------------------------------------------------------
-	VkImageView hdrView = m_hdr.target.getImageView();
+	std::array<VkImageView, 2> fbAttachments = {
+	    m_hdr.target.getImageView(),
+	    m_depth.target.getImageView(),
+	};
 
 	VkFramebufferCreateInfo framebufferInfo{};
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	framebufferInfo.renderPass = m_lighting.renderPass;
-	framebufferInfo.attachmentCount = 1;
-	framebufferInfo.pAttachments = &hdrView;
-	framebufferInfo.width = m_swapChain->getExtent().width;
-	framebufferInfo.height = m_swapChain->getExtent().height;
+	framebufferInfo.attachmentCount =
+	    static_cast<uint32_t>(fbAttachments.size());
+	framebufferInfo.pAttachments = fbAttachments.data();
+	framebufferInfo.width = m_swapChain.getExtent().width;
+	framebufferInfo.height = m_swapChain.getExtent().height;
 	framebufferInfo.layers = 1;
 
-	if (vkCreateFramebuffer(m_context->getDevice(), &framebufferInfo, nullptr,
+	if (vkCreateFramebuffer(m_context.getDevice(), &framebufferInfo, nullptr,
 	                        &m_hdr.framebuffer) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create lighting framebuffer!");
 	}
@@ -571,7 +603,7 @@ void RenderSystem::createLightingPass() {
 	    static_cast<uint32_t>(setLayouts.size());
 	pipelineLayoutInfo.pSetLayouts = setLayouts.data();
 
-	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
+	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_lighting.layout) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create lighting pipeline layout!");
 	}
@@ -592,14 +624,129 @@ void RenderSystem::createLightingPass() {
 	pipelineInfo.renderPass = m_lighting.renderPass;
 	pipelineInfo.subpass = 0;
 
-	if (vkCreateGraphicsPipelines(m_context->getDevice(), VK_NULL_HANDLE, 1,
+	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1,
 	                              &pipelineInfo, nullptr,
 	                              &m_lighting.pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create lighting pipeline!");
 	}
 
-	vkDestroyShaderModule(m_context->getDevice(), fragModule, nullptr);
-	vkDestroyShaderModule(m_context->getDevice(), vertModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), fragModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);
+}
+
+void RenderSystem::createSkyboxPipeline() {
+	auto vertCode = readFile("shaders/skybox_vert.spv");
+	auto fragCode = readFile("shaders/skybox_frag.spv");
+
+	VkShaderModule vertModule = createShaderModule(vertCode);
+	VkShaderModule fragModule = createShaderModule(fragCode);
+
+	VkPipelineShaderStageCreateInfo shaderStages[] = {
+	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+	     VK_SHADER_STAGE_VERTEX_BIT, vertModule, "main", nullptr},
+	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+	     VK_SHADER_STAGE_FRAGMENT_BIT, fragModule, "main", nullptr},
+	};
+
+	// No vertex input - cube positions generated in vertex shader
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.scissorCount = 1;
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	// Camera sits inside the cube - cull front faces to see the interior
+	rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_FALSE;
+	// xyww trick pushes skybox depth to far plane - LEQUAL lets it pass
+	// everywhere geometry didn't already write a smaller depth value
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendAttachment{};
+	blendAttachment.colorWriteMask =
+	    VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+	    VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	blendAttachment.blendEnable = VK_FALSE;
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = &blendAttachment;
+
+	std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT,
+	                                             VK_DYNAMIC_STATE_SCISSOR};
+	VkPipelineDynamicStateCreateInfo dynamicState{};
+	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicState.dynamicStateCount =
+	    static_cast<uint32_t>(dynamicStates.size());
+	dynamicState.pDynamicStates = dynamicStates.data();
+
+	// Set 0: frame data, Set 1: lighting/IBL set (env cubemap lives at binding
+	// 9)
+	std::array<VkDescriptorSetLayout, 2> setLayouts = {m_frameSetLayout,
+	                                                   m_lightingSetLayout};
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount =
+	    static_cast<uint32_t>(setLayouts.size());
+	pipelineLayoutInfo.pSetLayouts = setLayouts.data();
+
+	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo,
+	                           nullptr, &m_skybox.layout) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create skybox pipeline layout!");
+	}
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStages;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = &dynamicState;
+	pipelineInfo.layout = m_skybox.layout;
+	// Reuses the lighting render pass - same subpass, second pipeline bind
+	pipelineInfo.renderPass = m_lighting.renderPass;
+	pipelineInfo.subpass = 0;
+
+	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1,
+	                              &pipelineInfo, nullptr,
+	                              &m_skybox.pipeline) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create skybox pipeline!");
+	}
+
+	vkDestroyShaderModule(m_context.getDevice(), fragModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);
 }
 
 void RenderSystem::createTonemapPass() {
@@ -645,7 +792,7 @@ void RenderSystem::createTonemapPass() {
 	renderPassInfo.dependencyCount = 1;
 	renderPassInfo.pDependencies = &dependency;
 
-	if (vkCreateRenderPass(m_context->getDevice(), &renderPassInfo, nullptr,
+	if (vkCreateRenderPass(m_context.getDevice(), &renderPassInfo, nullptr,
 	                       &m_tonemap.renderPass) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create tonemap render pass!");
 	}
@@ -728,7 +875,7 @@ void RenderSystem::createTonemapPass() {
 	pipelineLayoutInfo.setLayoutCount = 1;
 	pipelineLayoutInfo.pSetLayouts = &m_tonemapSetLayout;
 
-	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
+	if (vkCreatePipelineLayout(m_context.getDevice(), &pipelineLayoutInfo,
 	                           nullptr, &m_tonemap.layout) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create tonemap pipeline layout!");
 	}
@@ -749,14 +896,14 @@ void RenderSystem::createTonemapPass() {
 	pipelineInfo.renderPass = m_tonemap.renderPass;
 	pipelineInfo.subpass = 0;
 
-	if (vkCreateGraphicsPipelines(m_context->getDevice(), VK_NULL_HANDLE, 1,
+	if (vkCreateGraphicsPipelines(m_context.getDevice(), VK_NULL_HANDLE, 1,
 	                              &pipelineInfo, nullptr,
 	                              &m_tonemap.pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create tonemap pipeline!");
 	}
 
-	vkDestroyShaderModule(m_context->getDevice(), fragModule, nullptr);
-	vkDestroyShaderModule(m_context->getDevice(), vertModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), fragModule, nullptr);
+	vkDestroyShaderModule(m_context.getDevice(), vertModule, nullptr);
 }
 
 void RenderSystem::createGBufferFramebuffer() {
@@ -773,11 +920,11 @@ void RenderSystem::createGBufferFramebuffer() {
 	framebufferInfo.renderPass = m_geometry.renderPass;
 	framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
 	framebufferInfo.pAttachments = attachments.data();
-	framebufferInfo.width = m_swapChain->getExtent().width;
-	framebufferInfo.height = m_swapChain->getExtent().height;
+	framebufferInfo.width = m_swapChain.getExtent().width;
+	framebufferInfo.height = m_swapChain.getExtent().height;
 	framebufferInfo.layers = 1;
 
-	if (vkCreateFramebuffer(m_context->getDevice(), &framebufferInfo, nullptr,
+	if (vkCreateFramebuffer(m_context.getDevice(), &framebufferInfo, nullptr,
 	                        &m_gbuffer.framebuffer) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create G-buffer framebuffer!");
 	}
@@ -792,7 +939,7 @@ void RenderSystem::createDepthResources() {
 	m_depth.format = VK_FORMAT_UNDEFINED;
 	for (VkFormat format : candidates) {
 		VkFormatProperties props;
-		vkGetPhysicalDeviceFormatProperties(m_context->getPhysicalDevice(),
+		vkGetPhysicalDeviceFormatProperties(m_context.getPhysicalDevice(),
 		                                    format, &props);
 		if (props.optimalTilingFeatures &
 		    VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
@@ -806,20 +953,20 @@ void RenderSystem::createDepthResources() {
 	}
 
 	RenderTargetDesc desc{};
-	desc.width = m_swapChain->getExtent().width;
-	desc.height = m_swapChain->getExtent().height;
+	desc.width = m_swapChain.getExtent().width;
+	desc.height = m_swapChain.getExtent().height;
 	desc.format = m_depth.format;
 	desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 	             VK_IMAGE_USAGE_SAMPLED_BIT;  // lighting pass will sample depth
 	desc.aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
 	desc.debugName = "depth";
 
-	m_depth.target.create(*m_context, m_context->getAllocator(), desc);
+	m_depth.target.create(m_context, m_context.getAllocator(), desc);
 }
 
 void RenderSystem::createGBufferTargets() {
-	const uint32_t w = m_swapChain->getExtent().width;
-	const uint32_t h = m_swapChain->getExtent().height;
+	const uint32_t w = m_swapChain.getExtent().width;
+	const uint32_t h = m_swapChain.getExtent().height;
 
 	constexpr VkImageUsageFlags gbufferUsage =
 	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -831,7 +978,7 @@ void RenderSystem::createGBufferTargets() {
 	baseColorDesc.usage = gbufferUsage;
 	baseColorDesc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	baseColorDesc.debugName = "gbuffer_basecolor_metallic";
-	m_gbuffer.baseColorMetallic.create(*m_context, m_context->getAllocator(),
+	m_gbuffer.baseColorMetallic.create(m_context, m_context.getAllocator(),
 	                                   baseColorDesc);
 
 	RenderTargetDesc normalsDesc{};
@@ -841,8 +988,7 @@ void RenderSystem::createGBufferTargets() {
 	normalsDesc.usage = gbufferUsage;
 	normalsDesc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	normalsDesc.debugName = "gbuffer_normals";
-	m_gbuffer.normals.create(*m_context, m_context->getAllocator(),
-	                         normalsDesc);
+	m_gbuffer.normals.create(m_context, m_context.getAllocator(), normalsDesc);
 
 	RenderTargetDesc roughnessDesc{};
 	roughnessDesc.width = w;
@@ -851,7 +997,7 @@ void RenderSystem::createGBufferTargets() {
 	roughnessDesc.usage = gbufferUsage;
 	roughnessDesc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	roughnessDesc.debugName = "gbuffer_roughness_ao_specular_id";
-	m_gbuffer.roughnessAOSpecID.create(*m_context, m_context->getAllocator(),
+	m_gbuffer.roughnessAOSpecID.create(m_context, m_context.getAllocator(),
 	                                   roughnessDesc);
 
 	RenderTargetDesc emissiveDesc{};
@@ -861,20 +1007,20 @@ void RenderSystem::createGBufferTargets() {
 	emissiveDesc.usage = gbufferUsage;
 	emissiveDesc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	emissiveDesc.debugName = "gbuffer_emissive_flags";
-	m_gbuffer.emissiveFlags.create(*m_context, m_context->getAllocator(),
+	m_gbuffer.emissiveFlags.create(m_context, m_context.getAllocator(),
 	                               emissiveDesc);
 }
 
 void RenderSystem::createHDRTarget() {
 	RenderTargetDesc hdrDesc{};
-	hdrDesc.width = m_swapChain->getExtent().width;
-	hdrDesc.height = m_swapChain->getExtent().height;
+	hdrDesc.width = m_swapChain.getExtent().width;
+	hdrDesc.height = m_swapChain.getExtent().height;
 	hdrDesc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	hdrDesc.usage =
 	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	hdrDesc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	hdrDesc.debugName = "hdr_target";
-	m_hdr.target.create(*m_context, m_context->getAllocator(), hdrDesc);
+	m_hdr.target.create(m_context, m_context.getAllocator(), hdrDesc);
 }
 
 void RenderSystem::createSamplers() {
@@ -898,7 +1044,7 @@ void RenderSystem::createSamplers() {
 	gbufferSamplerInfo.minLod = 0.0f;
 	gbufferSamplerInfo.maxLod = 0.0f;
 
-	if (vkCreateSampler(m_context->getDevice(), &gbufferSamplerInfo, nullptr,
+	if (vkCreateSampler(m_context.getDevice(), &gbufferSamplerInfo, nullptr,
 	                    &m_gbufferSampler) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create G-buffer sampler!");
 	}
@@ -908,5 +1054,5 @@ void RenderSystem::createSamplers() {
 	nameInfo.objectType = VK_OBJECT_TYPE_SAMPLER;
 	nameInfo.objectHandle = reinterpret_cast<uint64_t>(m_gbufferSampler);
 	nameInfo.pObjectName = "gbuffer_sampler";
-	m_context->setDebugName(nameInfo);
+	m_context.setDebugName(nameInfo);
 }

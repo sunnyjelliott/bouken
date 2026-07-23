@@ -26,6 +26,10 @@ class UsdDiagnosticDelegate final : public TfDiagnosticMgr::Delegate {
 };
 }  // namespace
 
+Application::Application()
+    : m_iblSystem(m_context),
+      m_renderSystem(m_context, m_swapChain, m_lightSystem, m_iblSystem) {}
+
 void Application::run() {
 	initWindow();
 	initVulkan();
@@ -43,7 +47,7 @@ void Application::initWindow() {
 	    GLFW_FALSE);  // TODO: Re-enable when window resizing is handled.
 
 	m_window =
-	    glfwCreateWindow(WIDTH, HEIGHT, "Bunny Engine", nullptr, nullptr);
+	    glfwCreateWindow(WIDTH, HEIGHT, "Bouken Engine", nullptr, nullptr);
 
 	m_inputBackend = new GLFWInputBackend(m_window);
 
@@ -60,7 +64,8 @@ void Application::initVulkan() {
 	m_materialManager.initialize();
 
 	m_lightSystem.initialize(m_context);
-	m_renderSystem.initialize(m_context, m_swapChain, m_lightSystem);
+	m_iblSystem.init();
+	m_renderSystem.initialize();
 }
 
 void Application::initScene() {
@@ -142,8 +147,19 @@ void Application::initScene() {
 	                                  "assets" / "models" / "main_sponza" /
 	                                  "sponza.usdc";
 
+	std::optional<std::string> iblPath;
 	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem,
-	                       m_textureManager, m_materialManager, options);
+	                       m_textureManager, m_materialManager, options,
+	                       &iblPath);
+
+	if (iblPath) {
+		m_iblSystem.loadEnvironment(*iblPath);
+		m_renderSystem.updateIBLDescriptors();
+	} else {
+		std::cout << "  No IBL environment found - rendering without "
+		             "image-based lighting"
+		          << std::endl;
+	}
 
 	m_renderSystem.createMaterialDescriptorSets(m_materialManager,
 	                                            m_textureManager);

@@ -6,9 +6,7 @@
 #include "vulkantexturebackend.h"
 
 void RenderSystem::createDescriptorSetLayouts() {
-	// -------------------------------------------------------
 	// Set 0 - per frame: one UBO visible to all stages
-	// -------------------------------------------------------
 	VkDescriptorSetLayoutBinding frameUBOBinding{};
 	frameUBOBinding.binding = 0;
 	frameUBOBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -21,16 +19,16 @@ void RenderSystem::createDescriptorSetLayouts() {
 	frameLayoutInfo.bindingCount = 1;
 	frameLayoutInfo.pBindings = &frameUBOBinding;
 
-	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &frameLayoutInfo,
+	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &frameLayoutInfo,
 	                                nullptr, &m_frameSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error(
 		    "Failed to create frame descriptor set layout!");
 	}
 
-	// -------------------------------------------------------
-	// Set 1a - lighting pass: 5 G-buffer samplers + depth
-	// -------------------------------------------------------
-	std::array<VkDescriptorSetLayoutBinding, 6> lightingBindings{};
+	// Set 1a - lighting pass: 5 G-buffer samplers + depth + light SSBO + IBL
+	std::array<VkDescriptorSetLayoutBinding, 10> lightingBindings{};
+
+	// Binding 0..4: G-buffer samplers
 	for (uint32_t i = 0; i < 5; i++) {
 		lightingBindings[i].binding = i;
 		lightingBindings[i].descriptorType =
@@ -45,6 +43,34 @@ void RenderSystem::createDescriptorSetLayouts() {
 	lightingBindings[5].descriptorCount = 1;
 	lightingBindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Binding 6: SH coefficients UBO
+	lightingBindings[6].binding = 6;
+	lightingBindings[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	lightingBindings[6].descriptorCount = 1;
+	lightingBindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 7: prefiltered environment cubemap
+	lightingBindings[7].binding = 7;
+	lightingBindings[7].descriptorType =
+	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	lightingBindings[7].descriptorCount = 1;
+	lightingBindings[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 8: BRDF LUT
+	lightingBindings[8].binding = 8;
+	lightingBindings[8].descriptorType =
+	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	lightingBindings[8].descriptorCount = 1;
+	lightingBindings[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 9: environment cubemap
+	lightingBindings[9].binding = 9;
+	lightingBindings[9].descriptorType =
+	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	lightingBindings[9].descriptorCount = 1;
+	lightingBindings[9].stageFlags =
+	    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
 	VkDescriptorSetLayoutCreateInfo lightingLayoutInfo{};
 	lightingLayoutInfo.sType =
 	    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -52,7 +78,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	    static_cast<uint32_t>(lightingBindings.size());
 	lightingLayoutInfo.pBindings = lightingBindings.data();
 
-	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &lightingLayoutInfo,
+	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &lightingLayoutInfo,
 	                                nullptr,
 	                                &m_lightingSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error(
@@ -74,7 +100,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	tonemapLayoutInfo.bindingCount = 1;
 	tonemapLayoutInfo.pBindings = &tonemapBinding;
 
-	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &tonemapLayoutInfo,
+	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &tonemapLayoutInfo,
 	                                nullptr,
 	                                &m_tonemapSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error(
@@ -105,7 +131,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	    static_cast<uint32_t>(materialBindings.size());
 	materialLayoutInfo.pBindings = materialBindings.data();
 
-	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &materialLayoutInfo,
+	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &materialLayoutInfo,
 	                                nullptr,
 	                                &m_materialSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error(
@@ -122,7 +148,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	objectLayoutInfo.bindingCount = 0;
 	objectLayoutInfo.pBindings = nullptr;
 
-	if (vkCreateDescriptorSetLayout(m_context->getDevice(), &objectLayoutInfo,
+	if (vkCreateDescriptorSetLayout(m_context.getDevice(), &objectLayoutInfo,
 	                                nullptr,
 	                                &m_objectSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error(
@@ -132,18 +158,19 @@ void RenderSystem::createDescriptorSetLayouts() {
 
 void RenderSystem::createDescriptorPool() {
 	const uint32_t swapImageCount =
-	    static_cast<uint32_t>(m_swapChain->getImageCount());
+	    static_cast<uint32_t>(m_swapChain.getImageCount());
 	constexpr uint32_t MAX_MATERIALS = 100;
 
 	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
-	// UBOs: per swapchain image + per material
+	// UBOs: per swapchain image + per material + SH coefficients
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[0].descriptorCount = swapImageCount + MAX_MATERIALS;
+	poolSizes[0].descriptorCount = swapImageCount + MAX_MATERIALS + 1;
 
 	// Combined image samplers: lighting(5) + tonemap(1) + materials(6 * max)
+	//  + IBL(prefiltered environment map + BRDF LUT + environment cubemap)
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount = 5 + 1 + (6 * MAX_MATERIALS);
+	poolSizes[1].descriptorCount = 5 + 1 + (6 * MAX_MATERIALS) + 3;
 
 	// SSBOs: lighting, then cluster lighting (TODO)
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -151,7 +178,7 @@ void RenderSystem::createDescriptorPool() {
 
 	// Max sets:
 	//   frame sets     : swapImageCount
-	//   lighting set   : 1
+	//   lighting set   : 1 (also bound by the skybox pipeline, no separate set)
 	//   tonemap set    : 1
 	//   material sets  : MAX_MATERIALS
 	//   object sets    : 0 (stub layout, no allocations yet)
@@ -163,14 +190,14 @@ void RenderSystem::createDescriptorPool() {
 	poolInfo.pPoolSizes = poolSizes.data();
 	poolInfo.maxSets = maxSets;
 
-	if (vkCreateDescriptorPool(m_context->getDevice(), &poolInfo, nullptr,
+	if (vkCreateDescriptorPool(m_context.getDevice(), &poolInfo, nullptr,
 	                           &m_descriptorPool) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create descriptor pool!");
 	}
 }
 
 void RenderSystem::createFrameUBOs() {
-	const size_t imageCount = m_swapChain->getImageCount();
+	const size_t imageCount = m_swapChain.getImageCount();
 
 	m_frameUBOs.resize(imageCount);
 	m_frameUBOAllocations.resize(imageCount);
@@ -189,7 +216,7 @@ void RenderSystem::createFrameUBOs() {
 
 	for (size_t i = 0; i < imageCount; i++) {
 		VmaAllocationInfo allocResult{};
-		if (vmaCreateBuffer(m_context->getAllocator(), &bufferInfo, &allocInfo,
+		if (vmaCreateBuffer(m_context.getAllocator(), &bufferInfo, &allocInfo,
 		                    &m_frameUBOs[i], &m_frameUBOAllocations[i],
 		                    &allocResult) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create frame UBO!");
@@ -204,12 +231,12 @@ void RenderSystem::createFrameUBOs() {
 		nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
 		nameInfo.objectHandle = reinterpret_cast<uint64_t>(m_frameUBOs[i]);
 		nameInfo.pObjectName = name.c_str();
-		m_context->setDebugName(nameInfo);
+		m_context.setDebugName(nameInfo);
 	}
 }
 
 void RenderSystem::createFrameDescriptorSets() {
-	const size_t imageCount = m_swapChain->getImageCount();
+	const size_t imageCount = m_swapChain.getImageCount();
 
 	// Allocate one set per swapchain image, all from the same layout
 	std::vector<VkDescriptorSetLayout> layouts(imageCount, m_frameSetLayout);
@@ -221,7 +248,7 @@ void RenderSystem::createFrameDescriptorSets() {
 	allocInfo.pSetLayouts = layouts.data();
 
 	m_frameSets.resize(imageCount);
-	if (vkAllocateDescriptorSets(m_context->getDevice(), &allocInfo,
+	if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo,
 	                             m_frameSets.data()) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate frame descriptor sets!");
 	}
@@ -242,18 +269,18 @@ void RenderSystem::createFrameDescriptorSets() {
 		write.descriptorCount = 1;
 		write.pBufferInfo = &bufferInfo;
 
-		vkUpdateDescriptorSets(m_context->getDevice(), 1, &write, 0, nullptr);
+		vkUpdateDescriptorSets(m_context.getDevice(), 1, &write, 0, nullptr);
 	}
 }
 
-void RenderSystem::createLightingDescriptorSet(LightSystem& lightSystem) {
+void RenderSystem::createLightingDescriptorSet() {
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = m_descriptorPool;
 	allocInfo.descriptorSetCount = 1;
 	allocInfo.pSetLayouts = &m_lightingSetLayout;
 
-	if (vkAllocateDescriptorSets(m_context->getDevice(), &allocInfo,
+	if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo,
 	                             &m_lightingSet) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate lighting descriptor set!");
 	}
@@ -279,11 +306,31 @@ void RenderSystem::createLightingDescriptorSet(LightSystem& lightSystem) {
 	                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
 
 	VkDescriptorBufferInfo lightBufferInfo{};
-	lightBufferInfo.buffer = lightSystem.getBuffer();
+	lightBufferInfo.buffer = m_lightSystem.getBuffer();
 	lightBufferInfo.offset = 0;
-	lightBufferInfo.range = lightSystem.getBufferSize();
+	lightBufferInfo.range = m_lightSystem.getBufferSize();
 
-	std::array<VkWriteDescriptorSet, 6> writes{};
+	VkDescriptorBufferInfo shInfo{};
+	shInfo.buffer = m_iblSystem.shCoeffBuffer();
+	shInfo.offset = 0;
+	shInfo.range = sizeof(bouken::SHCoefficients);
+
+	VkDescriptorImageInfo prefilteredInfo{};
+	prefilteredInfo.sampler = m_iblSystem.prefilteredSampler();
+	prefilteredInfo.imageView = m_iblSystem.prefilteredEnvView();
+	prefilteredInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkDescriptorImageInfo brdfLutInfo{};
+	brdfLutInfo.sampler = m_iblSystem.brdfLutSampler();
+	brdfLutInfo.imageView = m_iblSystem.brdfLutView();
+	brdfLutInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkDescriptorImageInfo envCubemapInfo{};
+	envCubemapInfo.sampler = m_iblSystem.envSampler();
+	envCubemapInfo.imageView = m_iblSystem.envCubemapView();
+	envCubemapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	std::array<VkWriteDescriptorSet, 10> writes{};
 	for (uint32_t i = 0; i < 5; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = m_lightingSet;
@@ -302,9 +349,102 @@ void RenderSystem::createLightingDescriptorSet(LightSystem& lightSystem) {
 	writes[5].descriptorCount = 1;
 	writes[5].pBufferInfo = &lightBufferInfo;
 
-	vkUpdateDescriptorSets(m_context->getDevice(),
+	writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[6].dstSet = m_lightingSet;
+	writes[6].dstBinding = 6;
+	writes[6].dstArrayElement = 0;
+	writes[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[6].descriptorCount = 1;
+	writes[6].pBufferInfo = &shInfo;
+
+	writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[7].dstSet = m_lightingSet;
+	writes[7].dstBinding = 7;
+	writes[7].dstArrayElement = 0;
+	writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[7].descriptorCount = 1;
+	writes[7].pImageInfo = &prefilteredInfo;
+
+	writes[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[8].dstSet = m_lightingSet;
+	writes[8].dstBinding = 8;
+	writes[8].dstArrayElement = 0;
+	writes[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[8].descriptorCount = 1;
+	writes[8].pImageInfo = &brdfLutInfo;
+
+	writes[9].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[9].dstSet = m_lightingSet;
+	writes[9].dstBinding = 9;
+	writes[9].dstArrayElement = 0;
+	writes[9].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[9].descriptorCount = 1;
+	writes[9].pImageInfo = &envCubemapInfo;
+
+	vkUpdateDescriptorSets(m_context.getDevice(),
 	                       static_cast<uint32_t>(writes.size()), writes.data(),
 	                       0, nullptr);
+}
+
+void RenderSystem::updateIBLDescriptors() {
+	if (!m_iblSystem.isReady()) {
+		std::cerr << "RenderSystem: updateIBLDescriptors() called but "
+		          << "IBLSystem has no environment loaded - skipping"
+		          << std::endl;
+		return;
+	}
+
+	VkDescriptorBufferInfo shInfo{};
+	shInfo.buffer = m_iblSystem.shCoeffBuffer();
+	shInfo.offset = 0;
+	shInfo.range = sizeof(bouken::SHCoefficients);
+
+	VkDescriptorImageInfo prefilteredInfo{};
+	prefilteredInfo.sampler = m_iblSystem.prefilteredSampler();
+	prefilteredInfo.imageView = m_iblSystem.prefilteredEnvView();
+	prefilteredInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkDescriptorImageInfo lutInfo{};
+	lutInfo.sampler = m_iblSystem.brdfLutSampler();
+	lutInfo.imageView = m_iblSystem.brdfLutView();
+	lutInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkDescriptorImageInfo envInfo{};
+	envInfo.sampler = m_iblSystem.envSampler();
+	envInfo.imageView = m_iblSystem.envCubemapView();
+	envInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	std::array<VkWriteDescriptorSet, 4> writes{};
+
+	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[0].dstSet = m_lighting.descriptorSet;  // set 1
+	writes[0].dstBinding = 6;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[0].descriptorCount = 1;
+	writes[0].pBufferInfo = &shInfo;
+
+	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[1].dstSet = m_lighting.descriptorSet;
+	writes[1].dstBinding = 7;
+	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[1].descriptorCount = 1;
+	writes[1].pImageInfo = &prefilteredInfo;
+
+	writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[2].dstSet = m_lighting.descriptorSet;
+	writes[2].dstBinding = 8;
+	writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[2].descriptorCount = 1;
+	writes[2].pImageInfo = &lutInfo;
+
+	writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[3].dstSet = m_lighting.descriptorSet;
+	writes[3].dstBinding = 9;
+	writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[3].descriptorCount = 1;
+	writes[3].pImageInfo = &envInfo;
+
+	vkUpdateDescriptorSets(m_context.getDevice(), 4, writes.data(), 0, nullptr);
 }
 
 void RenderSystem::createTonemapDescriptorSet() {
@@ -314,7 +454,7 @@ void RenderSystem::createTonemapDescriptorSet() {
 	allocInfo.descriptorSetCount = 1;
 	allocInfo.pSetLayouts = &m_tonemapSetLayout;
 
-	if (vkAllocateDescriptorSets(m_context->getDevice(), &allocInfo,
+	if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo,
 	                             &m_tonemapSet) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate tonemap descriptor set!");
 	}
@@ -333,7 +473,7 @@ void RenderSystem::createTonemapDescriptorSet() {
 	write.descriptorCount = 1;
 	write.pImageInfo = &imageInfo;
 
-	vkUpdateDescriptorSets(m_context->getDevice(), 1, &write, 0, nullptr);
+	vkUpdateDescriptorSets(m_context.getDevice(), 1, &write, 0, nullptr);
 }
 
 void RenderSystem::createMaterialDescriptorSets(
@@ -361,7 +501,7 @@ void RenderSystem::createMaterialDescriptorSets(
 		allocInfo.pSetLayouts = &m_materialSetLayout;
 
 		VkDescriptorSet descriptorSet;
-		if (vkAllocateDescriptorSets(m_context->getDevice(), &allocInfo,
+		if (vkAllocateDescriptorSets(m_context.getDevice(), &allocInfo,
 		                             &descriptorSet) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to allocate descriptor set!");
 		}
@@ -383,7 +523,7 @@ void RenderSystem::createMaterialDescriptorSets(
 		VmaAllocation uboAllocation;
 		VmaAllocationInfo uboAllocResult{};
 
-		if (vmaCreateBuffer(m_context->getAllocator(), &uboInfo, &uboAllocInfo,
+		if (vmaCreateBuffer(m_context.getAllocator(), &uboInfo, &uboAllocInfo,
 		                    &uboBuffer, &uboAllocation,
 		                    &uboAllocResult) != VK_SUCCESS) {
 			std::cerr << "Failed to create material UBO for material " << matID
@@ -460,7 +600,7 @@ void RenderSystem::createMaterialDescriptorSets(
 		writes[6].pBufferInfo = &scalarBufferInfo;
 
 		// Update both descriptors
-		vkUpdateDescriptorSets(m_context->getDevice(), 7, writes.data(), 0,
+		vkUpdateDescriptorSets(m_context.getDevice(), 7, writes.data(), 0,
 		                       nullptr);
 
 		// Store descriptor set in material

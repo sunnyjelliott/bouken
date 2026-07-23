@@ -209,7 +209,7 @@ void RenderSystem::recordLightingPass(VkCommandBuffer commandBuffer) {
 	beginInfo.renderPass = m_lighting.renderPass;
 	beginInfo.framebuffer = m_hdr.framebuffer;
 	beginInfo.renderArea.offset = {0, 0};
-	beginInfo.renderArea.extent = m_swapChain->getExtent();
+	beginInfo.renderArea.extent = m_swapChain.getExtent();
 	beginInfo.clearValueCount = 1;
 	beginInfo.pClearValues = &clearValue;
 
@@ -217,7 +217,7 @@ void RenderSystem::recordLightingPass(VkCommandBuffer commandBuffer) {
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 	                  m_lighting.pipeline);
 
-	VkExtent2D extent = m_swapChain->getExtent();
+	VkExtent2D extent = m_swapChain.getExtent();
 	VkViewport viewport{};
 	viewport.x = 0.0f;
 	viewport.y = 0.0f;
@@ -239,6 +239,17 @@ void RenderSystem::recordLightingPass(VkCommandBuffer commandBuffer) {
 
 	// Fullscreen triangle - 3 vertices, no vertex buffer
 	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+	// -------------------------------------------------------
+	// Skybox - same render pass, same set 1 (env cubemap at binding 9),
+	// depth-tested against the prepass to avoid drawing over geometry
+	// -------------------------------------------------------
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+	                  m_skybox.pipeline);
+	vkCmdBindDescriptorSets(
+	    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_skybox.layout, 0,
+	    static_cast<uint32_t>(sets.size()), sets.data(), 0, nullptr);
+	vkCmdDraw(commandBuffer, 36, 1, 0, 0);
 
 	vkCmdEndRenderPass(commandBuffer);
 }

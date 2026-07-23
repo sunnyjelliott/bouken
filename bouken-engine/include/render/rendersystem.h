@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "entity.h"
 #include "gpu/devicebuffer.h"
+#include "iblsystem.h"
 #include "pch.h"
 #include "render/rendertarget.h"
 #include "spatial.h"
@@ -27,8 +28,11 @@ struct RenderItem {
 
 class RenderSystem {
    public:
-	void initialize(VulkanContext& context, SwapChain& swapChain,
-	                LightSystem& lightSystem);
+	explicit RenderSystem(VulkanContext& context, SwapChain& swapChain,
+	                      LightSystem& lightSystem,
+	                      bouken::IBLSystem& iblSystem);
+
+	void initialize();
 	void cleanup();
 
 	uint32_t loadMesh(const std::string& filepath);
@@ -44,6 +48,7 @@ class RenderSystem {
 
 	AABB getMeshAABB(uint32_t meshID) const;
 
+	void updateIBLDescriptors();
 	void createMaterialDescriptorSets(MaterialManager& materialManager,
 	                                  TextureManager& textureManager);
 
@@ -56,12 +61,13 @@ class RenderSystem {
 	void createDescriptorPool();
 	void createFrameUBOs();
 	void createFrameDescriptorSets();
-	void createLightingDescriptorSet(LightSystem& lightSystem);
+	void createLightingDescriptorSet();
 	void createTonemapDescriptorSet();
 	void createDepthPrepass();
 	void createGeometryPass();
 	void createGBufferFramebuffer();
 	void createLightingPass();
+	void createSkyboxPipeline();
 	void createTonemapPass();
 	void createMeshBuffers();
 	void createCommandBuffer();
@@ -97,8 +103,10 @@ class RenderSystem {
 
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 
-	VulkanContext* m_context = nullptr;
-	SwapChain* m_swapChain = nullptr;
+	VulkanContext& m_context;
+	SwapChain& m_swapChain;
+	LightSystem& m_lightSystem;
+	bouken::IBLSystem& m_iblSystem;
 	uint32_t m_currentImageIndex = 0;
 
 	struct DepthResources {
@@ -136,6 +144,11 @@ class RenderSystem {
 		VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
 		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 	} m_lighting;
+
+	struct SkyboxPass {
+		VkPipeline pipeline = VK_NULL_HANDLE;
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+	} m_skybox;
 
 	struct TonemapPass {
 		VkRenderPass renderPass = VK_NULL_HANDLE;
