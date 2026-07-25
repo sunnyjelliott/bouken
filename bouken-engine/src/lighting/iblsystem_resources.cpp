@@ -106,6 +106,28 @@ void IBLSystem::generateMipmapsCube(VkImage cubemap, uint32_t resolution,
                                     uint32_t mipLevels, VkFormat format) {
 	VkCommandBuffer cmd = m_context.beginSingleTimeCommands();
 
+	// Mip 0 already arrives in TRANSFER_DST_OPTIMAL (left there by the
+	// equirect->cubemap compute dispatch). Mips 1..N-1 are still UNDEFINED
+	// from allocation and need transitioning before they can be blit
+	// destinations.
+	if (mipLevels > 1) {
+		VkImageMemoryBarrier initBarrier{};
+		initBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		initBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		initBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		initBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		initBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		initBarrier.image = cubemap;
+		initBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 1,
+		                                mipLevels - 1, 0, 6};
+		initBarrier.srcAccessMask = 0;
+		initBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		                     VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+		                     nullptr, 1, &initBarrier);
+	}
+
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -224,7 +246,7 @@ void IBLSystem::loadEnvironment(const std::string& hdrPath) {
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = m_prefilteredEnv;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
 		viewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		viewInfo.subresourceRange.baseMipLevel = mip;

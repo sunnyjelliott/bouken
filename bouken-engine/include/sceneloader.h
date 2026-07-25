@@ -48,8 +48,7 @@ class SceneLoader {
 	                      RenderSystem& renderSystem,
 	                      TextureManager& textureManager,
 	                      MaterialManager& materialManager,
-	                      const SceneLoadOptions& options = {},
-	                      std::optional<std::string>* outIBLPath = nullptr);
+	                      const SceneLoadOptions& options = {});
 
    private:
 	// File Parsing
@@ -58,19 +57,12 @@ class SceneLoader {
 	                    RenderSystem& renderSystem,
 	                    TextureManager& textureManager,
 	                    MaterialManager& materialManager,
-	                    const SceneLoadOptions& options,
-	                    std::optional<std::string>* outIBLPath);
+	                    const SceneLoadOptions& options);
 	static bool loadOBJ(const std::string& filepath, World& world,
 	                    RenderSystem& renderSystem,
 	                    TextureManager& textureManager,
 	                    MaterialManager& materialManager,
 	                    const SceneLoadOptions& options);
-
-	// USD IBL (dome light sidecar)
-	static bool composeIBLSublayer(const UsdStageRefPtr& stage,
-	                               const std::string& sceneDir,
-	                               const std::string& sceneStem);
-	static std::optional<std::string> loadIBL(const UsdStageRefPtr& stage);
 
 	// USD Materials/Textures
 	static void parseUsdMaterials(

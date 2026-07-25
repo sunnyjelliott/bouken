@@ -130,7 +130,7 @@ void bouken::IBLSystem::dispatchEquirectToCubemap(VkImageView equirectView) {
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = m_envCubemap;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
 		viewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		viewInfo.subresourceRange.baseMipLevel = 0;

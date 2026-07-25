@@ -315,22 +315,11 @@ void RenderSystem::createLightingDescriptorSet() {
 	shInfo.offset = 0;
 	shInfo.range = sizeof(bouken::SHCoefficients);
 
-	VkDescriptorImageInfo prefilteredInfo{};
-	prefilteredInfo.sampler = m_iblSystem.prefilteredSampler();
-	prefilteredInfo.imageView = m_iblSystem.prefilteredEnvView();
-	prefilteredInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	// IBL bindings (6-9) are written separately by updateIBLDescriptors(),
+	// called after IBLSystem::loadEnvironment() succeeds - the views/buffer
+	// backing them don't exist yet at this point in initialization.
 
-	VkDescriptorImageInfo brdfLutInfo{};
-	brdfLutInfo.sampler = m_iblSystem.brdfLutSampler();
-	brdfLutInfo.imageView = m_iblSystem.brdfLutView();
-	brdfLutInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	VkDescriptorImageInfo envCubemapInfo{};
-	envCubemapInfo.sampler = m_iblSystem.envSampler();
-	envCubemapInfo.imageView = m_iblSystem.envCubemapView();
-	envCubemapInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	std::array<VkWriteDescriptorSet, 10> writes{};
+	std::array<VkWriteDescriptorSet, 6> writes{};
 	for (uint32_t i = 0; i < 5; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = m_lightingSet;
@@ -348,38 +337,6 @@ void RenderSystem::createLightingDescriptorSet() {
 	writes[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	writes[5].descriptorCount = 1;
 	writes[5].pBufferInfo = &lightBufferInfo;
-
-	writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[6].dstSet = m_lightingSet;
-	writes[6].dstBinding = 6;
-	writes[6].dstArrayElement = 0;
-	writes[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	writes[6].descriptorCount = 1;
-	writes[6].pBufferInfo = &shInfo;
-
-	writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[7].dstSet = m_lightingSet;
-	writes[7].dstBinding = 7;
-	writes[7].dstArrayElement = 0;
-	writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writes[7].descriptorCount = 1;
-	writes[7].pImageInfo = &prefilteredInfo;
-
-	writes[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[8].dstSet = m_lightingSet;
-	writes[8].dstBinding = 8;
-	writes[8].dstArrayElement = 0;
-	writes[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writes[8].descriptorCount = 1;
-	writes[8].pImageInfo = &brdfLutInfo;
-
-	writes[9].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[9].dstSet = m_lightingSet;
-	writes[9].dstBinding = 9;
-	writes[9].dstArrayElement = 0;
-	writes[9].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writes[9].descriptorCount = 1;
-	writes[9].pImageInfo = &envCubemapInfo;
 
 	vkUpdateDescriptorSets(m_context.getDevice(),
 	                       static_cast<uint32_t>(writes.size()), writes.data(),
@@ -417,28 +374,28 @@ void RenderSystem::updateIBLDescriptors() {
 	std::array<VkWriteDescriptorSet, 4> writes{};
 
 	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[0].dstSet = m_lighting.descriptorSet;  // set 1
+	writes[0].dstSet = m_lightingSet;  // set 1
 	writes[0].dstBinding = 6;
 	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	writes[0].descriptorCount = 1;
 	writes[0].pBufferInfo = &shInfo;
 
 	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[1].dstSet = m_lighting.descriptorSet;
+	writes[1].dstSet = m_lightingSet;
 	writes[1].dstBinding = 7;
 	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[1].descriptorCount = 1;
 	writes[1].pImageInfo = &prefilteredInfo;
 
 	writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[2].dstSet = m_lighting.descriptorSet;
+	writes[2].dstSet = m_lightingSet;
 	writes[2].dstBinding = 8;
 	writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[2].descriptorCount = 1;
 	writes[2].pImageInfo = &lutInfo;
 
 	writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[3].dstSet = m_lighting.descriptorSet;
+	writes[3].dstSet = m_lightingSet;
 	writes[3].dstBinding = 9;
 	writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[3].descriptorCount = 1;

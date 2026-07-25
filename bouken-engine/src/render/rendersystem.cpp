@@ -51,6 +51,7 @@ void RenderSystem::initialize() {
 	createGeometryPass();
 	createGBufferFramebuffer();
 	createLightingPass();
+	createSkyboxPipeline();
 	createTonemapPass();
 	m_swapChain.createFramebuffers(m_tonemap.renderPass);
 	createMeshBuffers();
@@ -106,6 +107,9 @@ void RenderSystem::cleanup() {
 	vkDestroyPipelineLayout(m_context.getDevice(), m_lighting.layout, nullptr);
 	vkDestroyRenderPass(m_context.getDevice(), m_lighting.renderPass, nullptr);
 	vkDestroyFramebuffer(m_context.getDevice(), m_hdr.framebuffer, nullptr);
+
+	vkDestroyPipeline(m_context.getDevice(), m_skybox.pipeline, nullptr);
+	vkDestroyPipelineLayout(m_context.getDevice(), m_skybox.layout, nullptr);
 
 	vkDestroyPipeline(m_context.getDevice(), m_tonemap.pipeline, nullptr);
 	vkDestroyPipelineLayout(m_context.getDevice(), m_tonemap.layout, nullptr);

@@ -9,8 +9,7 @@ bool SceneLoader::loadScene(const std::string& filepath, World& world,
                             RenderSystem& renderSystem,
                             TextureManager& textureManager,
                             MaterialManager& materialManager,
-                            const SceneLoadOptions& options,
-                            std::optional<std::string>* outIBLPath) {
+                            const SceneLoadOptions& options) {
 	SceneFormat format = options.format;
 	if (format == SceneFormat::AUTO) {
 		format = detectFormat(filepath);
@@ -19,7 +18,7 @@ bool SceneLoader::loadScene(const std::string& filepath, World& world,
 	switch (format) {
 		case SceneFormat::USD:
 			return loadUSD(filepath, world, renderSystem, textureManager,
-			               materialManager, options, outIBLPath);
+			               materialManager, options);
 		case SceneFormat::OBJ:
 			return loadOBJ(filepath, world, renderSystem, textureManager,
 			               materialManager, options);
@@ -53,8 +52,7 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
                           RenderSystem& renderSystem,
                           TextureManager& textureManager,
                           MaterialManager& materialManager,
-                          const SceneLoadOptions& options,
-                          std::optional<std::string>* outIBLPath) {
+                          const SceneLoadOptions& options) {
 	std::cout << "Loading USD scene: " << filepath << std::endl;
 	std::filesystem::path absolutepath = std::filesystem::absolute(filepath);
 	UsdStageRefPtr stage = UsdStage::Open(absolutepath.generic_string());
@@ -85,17 +83,6 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 	std::string sceneDir = (lastSlash != std::string::npos)
 	                           ? filepath.substr(0, lastSlash + 1)
 	                           : "";
-
-	// --- IBL sidecar (dome light) - composed onto the stage before traversal,
-	// queried independently of geometry/material passes below ---
-	if (outIBLPath) {
-		*outIBLPath = std::nullopt;
-
-		std::string filename = std::filesystem::path(filepath).stem().string();
-		if (composeIBLSublayer(stage, sceneDir, filename)) {
-			*outIBLPath = loadIBL(stage);
-		}
-	}
 
 	// PASS 1: Parse all Material prims, create materials
 	std::unordered_map<SdfPath, uint32_t, SdfPath::Hash> materialMap;

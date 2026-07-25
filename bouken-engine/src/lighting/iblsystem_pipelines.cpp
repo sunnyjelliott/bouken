@@ -110,7 +110,7 @@ void buildComputePipeline(VulkanContext& context,
 void IBLSystem::createComputePipelines() {
 	// --- Equirect -> Cubemap ---
 	ComputePipelineDesc equirectDesc{};
-	equirectDesc.shaderPath = "shaders/ibl_equirect_to_cubemap.comp.spv";
+	equirectDesc.shaderPath = "shaders/ibl_equirect_to_cubemap_comp.spv";
 	equirectDesc.bindings = {
 	    {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
 	     VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -125,7 +125,7 @@ void IBLSystem::createComputePipelines() {
 
 	// --- SH Projection ---
 	ComputePipelineDesc shDesc{};
-	shDesc.shaderPath = "shaders/ibl_sh_project.comp.spv";
+	shDesc.shaderPath = "shaders/ibl_sh_project_comp.spv";
 	shDesc.bindings = {
 	    {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
 	     VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -142,7 +142,7 @@ void IBLSystem::createComputePipelines() {
 
 	// --- Prefilter ---
 	ComputePipelineDesc prefilterDesc{};
-	prefilterDesc.shaderPath = "shaders/ibl_prefilter.comp.spv";
+	prefilterDesc.shaderPath = "shaders/ibl_prefilter_comp.spv";
 	prefilterDesc.bindings = {
 	    {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
 	     VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -158,7 +158,7 @@ void IBLSystem::createComputePipelines() {
 
 	// --- BRDF LUT ---
 	ComputePipelineDesc brdfDesc{};
-	brdfDesc.shaderPath = "shaders/ibl_brdf_lut.comp.spv";
+	brdfDesc.shaderPath = "shaders/ibl_brdf_lut_comp.spv";
 	brdfDesc.bindings = {
 	    {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT,
 	     nullptr},

@@ -147,17 +147,19 @@ void Application::initScene() {
 	                                  "assets" / "models" / "main_sponza" /
 	                                  "sponza.usdc";
 
-	std::optional<std::string> iblPath;
 	SceneLoader::loadScene(scenePath.string(), m_world, m_renderSystem,
-	                       m_textureManager, m_materialManager, options,
-	                       &iblPath);
+	                       m_textureManager, m_materialManager, options);
 
-	if (iblPath) {
-		m_iblSystem.loadEnvironment(*iblPath);
+	std::filesystem::path hdrPath = std::filesystem::current_path() / "assets" /
+	                                "models" / "main_sponza" / "textures" /
+	                                "kloppenheim_05_4k.hdr";
+
+	if (std::filesystem::exists(hdrPath)) {
+		m_iblSystem.loadEnvironment(hdrPath.string());
 		m_renderSystem.updateIBLDescriptors();
 	} else {
-		std::cout << "  No IBL environment found - rendering without "
-		             "image-based lighting"
+		std::cout << "  IBL environment not found at expected path - rendering "
+		             "without image-based lighting"
 		          << std::endl;
 	}
 
@@ -204,6 +206,7 @@ void Application::mainLoop() {
 void Application::cleanup() {
 	m_renderSystem.cleanup();
 	m_lightSystem.cleanup();
+	m_iblSystem.cleanup();
 	m_materialManager.cleanup();
 	m_textureManager.cleanup();
 	m_vulkanTextureBackend.cleanup();
