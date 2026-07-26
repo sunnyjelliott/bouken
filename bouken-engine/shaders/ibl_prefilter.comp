@@ -6,9 +6,10 @@ layout(set = 0, binding = 0) uniform samplerCube u_envCubemap;
 layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube u_prefilteredFace;
 
 layout(push_constant) uniform PushConstants {
-    uint  pc_faceSize;
+    uint  pc_faceSize;        // destination mip's face size - write bounds
+    uint  pc_sourceFaceSize;  // source env cubemap face size at mip 0
     uint  pc_sampleCount;
-    float pc_roughness;    // current mip's roughness value
+    float pc_roughness;       // current mip's roughness value
 } pc;
 
 const float PI = 3.14159265359f;
@@ -119,7 +120,11 @@ void main()
         float D     = distributionGGX(NdotH, pc.pc_roughness);
         float pdf   = (D * NdotH / (4.0f * VdotH)) + 0.0001f;
 
-        float saTexel  = 4.0f * PI / (6.0f * float(pc.pc_faceSize * pc.pc_faceSize));
+        // Solid angle of one texel in the *source* cubemap - this is what the
+        // mip bias is measured against. Using the destination mip's face size
+        // here would be off by (source/dest)^2 (4096x at mip 4), driving
+        // mipLevel negative so every high-roughness lookup clamps to mip 0.
+        float saTexel  = 4.0f * PI / (6.0f * float(pc.pc_sourceFaceSize * pc.pc_sourceFaceSize));
         float saSample = 1.0f / (float(pc.pc_sampleCount) * pdf + 0.0001f);
         float mipLevel = pc.pc_roughness == 0.0f ? 0.0f
                        : 0.5f * log2(saSample / saTexel);

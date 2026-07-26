@@ -68,7 +68,13 @@ float texelSolidAngle(vec2 uv)
     return 4.0f / (sqrt(d) * d);
 }
 
-shared vec4 s_partials[9][256]; // 9 coefficients, up to 16×16 threads
+const float PI = 3.14159265359f;
+
+// One coefficient at a time: 256 x vec4 = 4 KB, comfortably inside Vulkan's
+// guaranteed 16 KB maxComputeSharedMemorySize. A [9][256] array would need
+// 36 KB, which only NVIDIA provides - AMD and Intel commonly report 32 KB and
+// would fail to create this pipeline outright.
+shared vec4 s_partials[256]; // up to 16x16 threads
 
 void main()
 {
@@ -86,40 +92,46 @@ void main()
         uint texelX = gl_GlobalInvocationID.x;
         uint texelY = gl_GlobalInvocationID.y;
 
-        // Initialise shared memory
+        // Gather this thread's contribution into registers first. Out-of-range
+        // threads keep col/dw/b at zero so they contribute nothing, which lets
+        // every barrier below stay in uniform control flow.
+        vec3  col = vec3(0.0f);
+        float dw  = 0.0f;
+        float b[9];
         for (int c = 0; c < 9; ++c)
-            s_partials[c][localIdx] = vec4(0.0f);
-        barrier();
+            b[c] = 0.0f;
 
         if (texelX < pc.pc_faceSize && texelY < pc.pc_faceSize)
         {
             vec2 uv  = (vec2(texelX, texelY) + 0.5f) / float(pc.pc_faceSize) * 2.0f - 1.0f;
             vec3 dir = cubemapDir(face, uv);
-            vec3 col = texture(u_envCubemap, dir).rgb;
-            float dw = texelSolidAngle(uv);
-
-            float b[9];
+            col = texture(u_envCubemap, dir).rgb;
+            dw  = texelSolidAngle(uv);
             shBasis(dir, b);
-
-            for (int c = 0; c < 9; ++c)
-                s_partials[c][localIdx] = vec4(col * b[c] * dw, dw);
         }
 
-        barrier();
-
-        // Tree reduction within workgroup
-        for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
+        // One coefficient per iteration, reusing the single shared buffer
+        for (int c = 0; c < 9; ++c)
         {
-            if (localIdx < stride)
-                for (int c = 0; c < 9; ++c)
-                    s_partials[c][localIdx] += s_partials[c][localIdx + stride];
+            s_partials[localIdx] = vec4(col * b[c] * dw, dw);
+            barrier();
+
+            // Tree reduction within workgroup
+            for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
+            {
+                if (localIdx < stride)
+                    s_partials[localIdx] += s_partials[localIdx + stride];
+                barrier();
+            }
+
+            // Thread 0 writes this workgroup's partial sum for coefficient c
+            if (localIdx == 0)
+                u_partialSums.data[groupIdx * 9 + c] = s_partials[0];
+
+            // Thread 0's read above must land before the next iteration
+            // overwrites shared memory
             barrier();
         }
-
-        // Thread 0 writes this workgroup's partial sum to the intermediate buffer
-        if (localIdx == 0)
-            for (int c = 0; c < 9; ++c)
-                u_partialSums.data[groupIdx * 9 + c] = s_partials[c][0];
     }
 
     // -----------------------------------------------------------------------
@@ -141,25 +153,35 @@ void main()
                 localSum[c] += u_partialSums.data[i * 9 + c];
         }
 
+        // Same one-coefficient-at-a-time tree reduction as pass 1. The total
+        // solid angle is identical in every coefficient's .w channel, so
+        // thread 0 captures the normalisation factor on the first iteration
+        // and carries it in a register for the rest.
+        float normFactor = 1.0f;
+
         for (int c = 0; c < 9; ++c)
-            s_partials[c][localIdx] = localSum[c];
-        barrier();
-
-        // Tree reduction across the 256 thread-local sums - unchanged from before
-        for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
         {
-            if (localIdx < stride)
-                for (int c = 0; c < 9; ++c)
-                    s_partials[c][localIdx] += s_partials[c][localIdx + stride];
+            s_partials[localIdx] = localSum[c];
             barrier();
-        }
 
-        if (localIdx == 0)
-        {
-            float totalWeight = s_partials[0][0].w;
-            float normFactor  = (totalWeight > 0.0f) ? (4.0f * 3.14159265f / totalWeight) : 1.0f;
-            for (int c = 0; c < 9; ++c)
-                u_shOutput.coeffs[c] = vec4(s_partials[c][0].rgb * normFactor, 0.0f);
+            for (uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y / 2; stride > 0; stride >>= 1)
+            {
+                if (localIdx < stride)
+                    s_partials[localIdx] += s_partials[localIdx + stride];
+                barrier();
+            }
+
+            if (localIdx == 0)
+            {
+                if (c == 0)
+                {
+                    float totalWeight = s_partials[0].w;
+                    normFactor = (totalWeight > 0.0f) ? (4.0f * PI / totalWeight) : 1.0f;
+                }
+                u_shOutput.coeffs[c] = vec4(s_partials[0].rgb * normFactor, 0.0f);
+            }
+
+            barrier();
         }
     }
 }

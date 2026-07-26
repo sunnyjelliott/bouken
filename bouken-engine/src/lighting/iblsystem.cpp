@@ -15,18 +15,29 @@ void bouken::IBLSystem::init() {
 	    mipLevelsForResolution(m_config.envCubemapResolution) - 1;
 	m_envSampler =
 	    createSampler(static_cast<float>(envMaxMip), VK_FILTER_LINEAR,
+	                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 	                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
 	m_prefilteredSampler =
 	    createSampler(static_cast<float>(m_config.prefilteredMipLevels - 1),
-	                  VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+	                  VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
 	m_brdfLutSampler = createSampler(0.0f, VK_FILTER_LINEAR,
+	                                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 	                                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+	// Equirect source: longitude is periodic, so U must REPEAT or the atan
+	// seam in dirToEquirect() shows as a vertical seam in the env cubemap.
+	// Latitude is not periodic - V clamps at the poles.
+	m_equirectSampler = createSampler(0.0f, VK_FILTER_LINEAR,
+	                                  VK_SAMPLER_ADDRESS_MODE_REPEAT,
+	                                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
 	nameSampler(m_envSampler, "ibl_env_sampler");
 	nameSampler(m_prefilteredSampler, "ibl_prefiltered_sampler");
 	nameSampler(m_brdfLutSampler, "ibl_brdf_lut_sampler");
+	nameSampler(m_equirectSampler, "ibl_equirect_sampler");
 
 	// 3. BRDF LUT image
 	create2DImage(m_config.brdfLutResolution, m_config.brdfLutResolution, 1,
@@ -68,9 +79,11 @@ void bouken::IBLSystem::cleanup() {
 	vkDestroySampler(m_context.getDevice(), m_envSampler, nullptr);
 	vkDestroySampler(m_context.getDevice(), m_prefilteredSampler, nullptr);
 	vkDestroySampler(m_context.getDevice(), m_brdfLutSampler, nullptr);
+	vkDestroySampler(m_context.getDevice(), m_equirectSampler, nullptr);
 	m_envSampler = VK_NULL_HANDLE;
 	m_prefilteredSampler = VK_NULL_HANDLE;
 	m_brdfLutSampler = VK_NULL_HANDLE;
+	m_equirectSampler = VK_NULL_HANDLE;
 
 	// Compute pipelines, layouts, DSLs, transient descriptor pool
 	destroyComputePipelines();
@@ -119,7 +132,7 @@ void bouken::IBLSystem::dispatchEquirectToCubemap(VkImageView equirectView) {
 	    m_computeDescriptorPool, m_equirectToCubemapDSL);
 
 	VkDescriptorImageInfo equirectInfo{};
-	equirectInfo.sampler = m_envSampler;
+	equirectInfo.sampler = m_equirectSampler;
 	equirectInfo.imageView = equirectView;
 	equirectInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -380,9 +393,11 @@ void bouken::IBLSystem::dispatchPrefilter() {
 
 		struct PushConstants {
 			uint32_t faceSize;
+			uint32_t sourceFaceSize;
 			uint32_t sampleCount;
 			float roughness;
-		} pushConst{mipSize, m_config.prefilterSampleCount, roughness};
+		} pushConst{mipSize, m_config.envCubemapResolution,
+		            m_config.prefilterSampleCount, roughness};
 
 		vkCmdPushConstants(cmd, m_prefilterLayout, VK_SHADER_STAGE_COMPUTE_BIT,
 		                   0, sizeof(pushConst), &pushConst);
@@ -587,8 +602,9 @@ void bouken::IBLSystem::create2DImage(uint32_t width, uint32_t height,
 	}
 }
 
-VkSampler bouken::IBLSystem::createSampler(float maxLod, VkFilter filter,
-                                           VkSamplerAddressMode addressMode) {
+VkSampler bouken::IBLSystem::createSampler(
+    float maxLod, VkFilter filter, VkSamplerAddressMode addressModeU,
+    VkSamplerAddressMode addressModeV) {
 	VkSamplerCreateInfo samplerInfo{};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	samplerInfo.magFilter = filter;
@@ -596,9 +612,9 @@ VkSampler bouken::IBLSystem::createSampler(float maxLod, VkFilter filter,
 	samplerInfo.mipmapMode = (filter == VK_FILTER_NEAREST)
 	                             ? VK_SAMPLER_MIPMAP_MODE_NEAREST
 	                             : VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	samplerInfo.addressModeU = addressMode;
-	samplerInfo.addressModeV = addressMode;
-	samplerInfo.addressModeW = addressMode;
+	samplerInfo.addressModeU = addressModeU;
+	samplerInfo.addressModeV = addressModeV;
+	samplerInfo.addressModeW = addressModeV;
 	samplerInfo.anisotropyEnable = VK_FALSE;
 	samplerInfo.maxAnisotropy = 1.0f;
 	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;

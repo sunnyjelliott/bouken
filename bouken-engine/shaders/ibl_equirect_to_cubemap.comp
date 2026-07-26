@@ -27,7 +27,7 @@ vec3 faceDirToWorld(uint face, vec2 uv) {
 }
 
 vec2 dirToEquirect(vec3 dir) {
-    vec2 uv = vec2(atan(dir.z, dir.x), asin(dir.y));
+    vec2 uv = vec2(atan(dir.z, dir.x), -asin(dir.y));
     uv *= INV_ATAN;
     uv += 0.5f;
     return uv;

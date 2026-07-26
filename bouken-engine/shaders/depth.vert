@@ -9,5 +9,10 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 void main() {
-    gl_Position = pc.projection * pc.view * pc.model * vec4(a_position, 1.0);
+    // Must match geometry.vert's expression exactly, including the association
+    // of the multiplies - the geometry pass depth-tests against what this pass
+    // wrote, so any last-bit difference would drop fragments.
+    vec4 ws_position = pc.model * vec4(a_position, 1.0);
+
+    gl_Position = pc.projection * pc.view * ws_position;
 }

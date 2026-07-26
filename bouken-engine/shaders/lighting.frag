@@ -155,22 +155,38 @@ vec3 evaluateBRDF(vec3 N, vec3 V, vec3 L,
 
 // -------------------------------------------------------
 // L2 SH irradiance approximation
+//
+// u_sh holds raw *radiance* coefficients L_lm from the SH projection pass.
+// Turning those into Lambertian diffuse needs the cosine-lobe convolution
+// (Ramamoorthi & Hanrahan 2001):
+//     E(N) = sum_l A_l * sum_m L_lm * Y_lm(N),   A = { PI, 2PI/3, PI/4 }
+// followed by Lambert's 1/PI, which cancels the PI out of every A_l and
+// leaves the per-band weights below. Without them L1 comes out 1.5x and L2
+// 4x too strong, which reads as over-contrasty ambient that clamps to black
+// on the shadowed side.
+//
+// The returned value is already divided by PI, so callers multiply by albedo
+// alone - no further 1/PI.
 // -------------------------------------------------------
+const float SH_BAND0 = 1.0f;         // PI      / PI
+const float SH_BAND1 = 2.0f / 3.0f;  // (2PI/3) / PI
+const float SH_BAND2 = 0.25f;        // (PI/4)  / PI
+
 vec3 evaluateSHIrradiance(vec3 N) {
     float x = N.x, y = N.y, z = N.z;
 
     vec3 irradiance =
-        u_sh.c[0].rgb * 0.282095f
+        SH_BAND0 * (u_sh.c[0].rgb * 0.282095f)
 
-      + u_sh.c[1].rgb * 0.488603f * y
-      + u_sh.c[2].rgb * 0.488603f * z
-      + u_sh.c[3].rgb * 0.488603f * x
+      + SH_BAND1 * (u_sh.c[1].rgb * 0.488603f * y
+                  + u_sh.c[2].rgb * 0.488603f * z
+                  + u_sh.c[3].rgb * 0.488603f * x)
 
-      + u_sh.c[4].rgb * 1.092548f * x * y
-      + u_sh.c[5].rgb * 1.092548f * y * z
-      + u_sh.c[6].rgb * 0.315392f * (3.0f * z * z - 1.0f)
-      + u_sh.c[7].rgb * 1.092548f * x * z
-      + u_sh.c[8].rgb * 0.546274f * (x * x - y * y);
+      + SH_BAND2 * (u_sh.c[4].rgb * 1.092548f * x * y
+                  + u_sh.c[5].rgb * 1.092548f * y * z
+                  + u_sh.c[6].rgb * 0.315392f * (3.0f * z * z - 1.0f)
+                  + u_sh.c[7].rgb * 1.092548f * x * z
+                  + u_sh.c[8].rgb * 0.546274f * (x * x - y * y));
 
     return max(irradiance, vec3(0.0f));
 }

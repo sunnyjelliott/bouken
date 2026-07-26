@@ -150,8 +150,8 @@ void IBLSystem::createComputePipelines() {
 	     nullptr},
 	};
 	prefilterDesc.pushConstantSize =
-	    sizeof(uint32_t) * 2 +
-	    sizeof(float);  // { faceSize, sampleCount, roughness }
+	    sizeof(uint32_t) * 3 +
+	    sizeof(float);  // { faceSize, sourceFaceSize, sampleCount, roughness }
 
 	buildComputePipeline(m_context, prefilterDesc, m_prefilterDSL,
 	                     m_prefilterLayout, m_prefilterPipeline);

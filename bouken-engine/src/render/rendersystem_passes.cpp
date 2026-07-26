@@ -212,7 +212,10 @@ void RenderSystem::createGeometryPass() {
 		    a.format = m_depth.format;
 		    a.samples = VK_SAMPLE_COUNT_1_BIT;
 		    a.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		    a.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		    // Must STORE: the lighting pass samples this depth to
+		    // reconstruct world position. DONT_CARE leaves the contents
+		    // undefined and surfaces as tile-shaped garbage.
+		    a.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		    a.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		    a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		    a.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -242,7 +245,7 @@ void RenderSystem::createGeometryPass() {
 	// 2. Lighting pass waits for geometry pass to finish writing G-buffer
 	std::array<VkSubpassDependency, 2> dependencies;
 
-	// Depth prepass → geometry pass
+	// Depth prepass -> geometry pass
 	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[0].dstSubpass = 0;
 	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -252,7 +255,7 @@ void RenderSystem::createGeometryPass() {
 	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-	// Geometry pass → lighting pass
+	// Geometry pass -> lighting pass
 	dependencies[1].srcSubpass = 0;
 	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[1].srcStageMask =
@@ -327,8 +330,10 @@ void RenderSystem::createGeometryPass() {
 	    VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthStencil.depthTestEnable = VK_TRUE;
 	depthStencil.depthWriteEnable = VK_FALSE;  // prepass already wrote depth
-	depthStencil.depthCompareOp =
-	    VK_COMPARE_OP_EQUAL;  // only draw what the prepass accepted
+	// Depth already holds the nearest value, so LEQUAL still rejects every
+	// occluded fragment. Preferred over EQUAL, which punches holes in the
+	// G-buffer on any last-bit disagreement with the prepass.
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
 	VkPipelineMultisampleStateCreateInfo multisampling{};
 	multisampling.sType =
@@ -425,37 +430,21 @@ void RenderSystem::createLightingPass() {
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	// Depth - read-only, preserved from the depth prepass/geometry pass for
-	// skybox occlusion. Geometry pass leaves depth in READ_ONLY (its own
-	// finalLayout), so that's what we inherit as our initialLayout.
-	VkAttachmentDescription depthAttachment{};
-	depthAttachment.format = m_depth.format;
-	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.initialLayout =
-	    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	depthAttachment.finalLayout =
-	    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-	std::array<VkAttachmentDescription, 2> attachments = {colorAttachment,
-	                                                      depthAttachment};
+	// Depth is deliberately NOT an attachment here. Both lighting.frag and
+	// skybox.frag sample it through set 1 binding 4, and sampling an image
+	// that is simultaneously bound as an attachment is an attachment feedback
+	// loop - undefined without VK_EXT_attachment_feedback_loop_layout, and it
+	// reads back tile-shaped garbage on real hardware.
+	std::array<VkAttachmentDescription, 1> attachments = {colorAttachment};
 
 	VkAttachmentReference colorRef{};
 	colorRef.attachment = 0;
 	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	VkAttachmentReference depthRef{};
-	depthRef.attachment = 1;
-	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
 	VkSubpassDescription subpass{};
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &colorRef;
-	subpass.pDepthStencilAttachment = &depthRef;
 
 	std::array<VkSubpassDependency, 3> dependencies{};
 
@@ -479,14 +468,15 @@ void RenderSystem::createLightingPass() {
 	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-	// Depth write (geometry pass) -> lighting pass (skybox depth test reads it)
+	// Depth write (prepass + geometry pass) -> lighting/skybox fragment shaders
+	// sampling depth as a texture
 	dependencies[2].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[2].dstSubpass = 0;
 	dependencies[2].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 	dependencies[2].srcAccessMask =
 	    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependencies[2].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependencies[2].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+	dependencies[2].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
 	VkRenderPassCreateInfo renderPassInfo{};
@@ -503,9 +493,8 @@ void RenderSystem::createLightingPass() {
 		throw std::runtime_error("Failed to create lighting render pass!");
 	}
 
-	std::array<VkImageView, 2> fbAttachments = {
+	std::array<VkImageView, 1> fbAttachments = {
 	    m_hdr.target.getImageView(),
-	    m_depth.target.getImageView(),
 	};
 
 	VkFramebufferCreateInfo framebufferInfo{};
@@ -675,11 +664,13 @@ void RenderSystem::createSkyboxPipeline() {
 	VkPipelineDepthStencilStateCreateInfo depthStencil{};
 	depthStencil.sType =
 	    VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthStencil.depthTestEnable = VK_TRUE;
+	// The lighting render pass has no depth attachment, so there is nothing to
+	// test against. skybox.frag instead samples depth (set 1 binding 4) and
+	// discards wherever geometry already wrote a closer value - equivalent to
+	// the LEQUAL test this replaces, given the xyww far-plane trick in
+	// skybox.vert.
+	depthStencil.depthTestEnable = VK_FALSE;
 	depthStencil.depthWriteEnable = VK_FALSE;
-	// xyww trick pushes skybox depth to far plane - LEQUAL lets it pass
-	// everywhere geometry didn't already write a smaller depth value
-	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
 	VkPipelineMultisampleStateCreateInfo multisampling{};
 	multisampling.sType =

@@ -66,8 +66,11 @@ class IBLSystem {
 	                   VkFormat format, VkImageUsageFlags usage,
 	                   VkImage& outImage, VmaAllocation& outAllocation,
 	                   VkImageView& outView);
+	// U and V are separate because equirectangular sources need U to wrap
+	// (longitude is periodic) while V must clamp at the poles.
 	VkSampler createSampler(float maxLod, VkFilter filter,
-	                        VkSamplerAddressMode addressMode);
+	                        VkSamplerAddressMode addressModeU,
+	                        VkSamplerAddressMode addressModeV);
 
 	void loadEquirectSource(const std::string& hdrPath);
 	void generateMipmapsCube(VkImage cubemap, uint32_t resolution,
@@ -137,6 +140,8 @@ class IBLSystem {
 	VkSampler m_envSampler = VK_NULL_HANDLE;
 	VkSampler m_prefilteredSampler = VK_NULL_HANDLE;
 	VkSampler m_brdfLutSampler = VK_NULL_HANDLE;
+	// Equirect HDR source: U wraps at the atan seam, V clamps at the poles
+	VkSampler m_equirectSampler = VK_NULL_HANDLE;
 };
 
 };  // namespace bouken
