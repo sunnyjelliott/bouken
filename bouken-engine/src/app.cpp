@@ -66,6 +66,7 @@ void Application::initVulkan() {
 	m_lightSystem.initialize(m_context);
 	m_iblSystem.init();
 	m_renderSystem.initialize();
+	m_renderSystem.updateIBLDescriptors();
 }
 
 void Application::initScene() {

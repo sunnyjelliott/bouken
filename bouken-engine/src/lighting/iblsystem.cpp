@@ -30,9 +30,9 @@ void bouken::IBLSystem::init() {
 	// Equirect source: longitude is periodic, so U must REPEAT or the atan
 	// seam in dirToEquirect() shows as a vertical seam in the env cubemap.
 	// Latitude is not periodic - V clamps at the poles.
-	m_equirectSampler = createSampler(0.0f, VK_FILTER_LINEAR,
-	                                  VK_SAMPLER_ADDRESS_MODE_REPEAT,
-	                                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+	m_equirectSampler =
+	    createSampler(0.0f, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT,
+	                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
 	nameSampler(m_envSampler, "ibl_env_sampler");
 	nameSampler(m_prefilteredSampler, "ibl_prefiltered_sampler");
@@ -46,6 +46,61 @@ void bouken::IBLSystem::init() {
 	              m_brdfLut, m_brdfLutAlloc, m_brdfLutView);
 	nameImage(m_brdfLut, "ibl_brdf_lut");
 	nameImageView(m_brdfLutView, "ibl_brdf_lut_view");
+
+	// 3b. Default fallback cubemap - 1x1x6 black, bound until a real
+	// environment loads. Makes bindings 7/9 always valid post-init(),
+	// regardless of whether loadEnvironment() ever succeeds.
+	createCubemapImage(
+	    1, 1, VK_FORMAT_R16G16B16A16_SFLOAT,
+	    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+	    m_defaultCubemap, m_defaultCubemapAlloc, m_defaultCubemapView);
+	nameImage(m_defaultCubemap, "ibl_default_cubemap");
+	nameImageView(m_defaultCubemapView, "ibl_default_cubemap_view");
+
+	{
+		VkCommandBuffer cmd = m_context.beginSingleTimeCommands();
+
+		VkImageMemoryBarrier toDst{};
+		toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		toDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toDst.image = m_defaultCubemap;
+		toDst.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6};
+		toDst.srcAccessMask = 0;
+		toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		                     VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+		                     nullptr, 1, &toDst);
+
+		VkClearColorValue black{};
+		black.float32[0] = black.float32[1] = black.float32[2] = 0.0f;
+		black.float32[3] = 1.0f;
+
+		VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6};
+		vkCmdClearColorImage(cmd, m_defaultCubemap,
+		                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1,
+		                     &range);
+
+		VkImageMemoryBarrier toShaderRead{};
+		toShaderRead.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		toShaderRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		toShaderRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		toShaderRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toShaderRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toShaderRead.image = m_defaultCubemap;
+		toShaderRead.subresourceRange = range;
+		toShaderRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		toShaderRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+		                     nullptr, 0, nullptr, 1, &toShaderRead);
+
+		m_context.endSingleTimeCommands(cmd);
+	}
 
 	// 4. SH coefficient buffer - GPU-only, written by compute (storage),
 	//    read by lighting shader (uniform). Fixed size, allocated once.
@@ -84,6 +139,13 @@ void bouken::IBLSystem::cleanup() {
 	m_prefilteredSampler = VK_NULL_HANDLE;
 	m_brdfLutSampler = VK_NULL_HANDLE;
 	m_equirectSampler = VK_NULL_HANDLE;
+
+	vkDestroyImageView(m_context.getDevice(), m_defaultCubemapView, nullptr);
+	vmaDestroyImage(m_context.getAllocator(), m_defaultCubemap,
+	                m_defaultCubemapAlloc);
+	m_defaultCubemapView = VK_NULL_HANDLE;
+	m_defaultCubemap = VK_NULL_HANDLE;
+	m_defaultCubemapAlloc = VK_NULL_HANDLE;
 
 	// Compute pipelines, layouts, DSLs, transient descriptor pool
 	destroyComputePipelines();
@@ -602,9 +664,9 @@ void bouken::IBLSystem::create2DImage(uint32_t width, uint32_t height,
 	}
 }
 
-VkSampler bouken::IBLSystem::createSampler(
-    float maxLod, VkFilter filter, VkSamplerAddressMode addressModeU,
-    VkSamplerAddressMode addressModeV) {
+VkSampler bouken::IBLSystem::createSampler(float maxLod, VkFilter filter,
+                                           VkSamplerAddressMode addressModeU,
+                                           VkSamplerAddressMode addressModeV) {
 	VkSamplerCreateInfo samplerInfo{};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	samplerInfo.magFilter = filter;

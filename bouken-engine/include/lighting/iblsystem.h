@@ -45,8 +45,14 @@ class IBLSystem {
 	bool isReady() const { return m_ready; }
 	bool isInitialized() const { return m_initialized; }
 
-	VkImageView envCubemapView() const { return m_envCubemapView; }
-	VkImageView prefilteredEnvView() const { return m_prefilteredEnvView; }
+	VkImageView envCubemapView() const {
+		return (m_envCubemap != VK_NULL_HANDLE) ? m_envCubemapView
+		                                        : m_defaultCubemapView;
+	}
+	VkImageView prefilteredEnvView() const {
+		return (m_prefilteredEnv != VK_NULL_HANDLE) ? m_prefilteredEnvView
+		                                            : m_defaultCubemapView;
+	}
 	VkImageView brdfLutView() const { return m_brdfLutView; }
 	VkSampler envSampler() const { return m_envSampler; }
 	VkSampler prefilteredSampler() const { return m_prefilteredSampler; }
@@ -130,6 +136,10 @@ class IBLSystem {
 	std::array<VkImageView, 5> m_prefilteredMipViews = {};
 
 	// --- Persistent resources ---
+	VkImage m_defaultCubemap = VK_NULL_HANDLE;
+	VmaAllocation m_defaultCubemapAlloc = VK_NULL_HANDLE;
+	VkImageView m_defaultCubemapView = VK_NULL_HANDLE;
+
 	VkImage m_brdfLut = VK_NULL_HANDLE;
 	VmaAllocation m_brdfLutAlloc = VK_NULL_HANDLE;
 	VkImageView m_brdfLutView = VK_NULL_HANDLE;

@@ -344,10 +344,9 @@ void RenderSystem::createLightingDescriptorSet() {
 }
 
 void RenderSystem::updateIBLDescriptors() {
-	if (!m_iblSystem.isReady()) {
-		std::cerr << "RenderSystem: updateIBLDescriptors() called but "
-		          << "IBLSystem has no environment loaded - skipping"
-		          << std::endl;
+	if (!m_iblSystem.isInitialized()) {
+		std::cerr << "RenderSystem: updateIBLDescriptors() called before "
+		          << "IBLSystem::init() - skipping" << std::endl;
 		return;
 	}
 
