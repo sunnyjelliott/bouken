@@ -310,11 +310,6 @@ void RenderSystem::createLightingDescriptorSet() {
 	lightBufferInfo.offset = 0;
 	lightBufferInfo.range = m_lightSystem.getBufferSize();
 
-	VkDescriptorBufferInfo shInfo{};
-	shInfo.buffer = m_iblSystem.shCoeffBuffer();
-	shInfo.offset = 0;
-	shInfo.range = sizeof(bouken::SHCoefficients);
-
 	// IBL bindings (6-9) are written separately by updateIBLDescriptors(),
 	// called after IBLSystem::loadEnvironment() succeeds - the views/buffer
 	// backing them don't exist yet at this point in initialization.

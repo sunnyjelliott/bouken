@@ -53,6 +53,9 @@ class IBLSystem {
 		return (m_prefilteredEnv != VK_NULL_HANDLE) ? m_prefilteredEnvView
 		                                            : m_defaultCubemapView;
 	}
+	uint32_t prefilteredMipLevels() const {
+		return m_config.prefilteredMipLevels;
+	}
 	VkImageView brdfLutView() const { return m_brdfLutView; }
 	VkSampler envSampler() const { return m_envSampler; }
 	VkSampler prefilteredSampler() const { return m_prefilteredSampler; }
@@ -133,7 +136,7 @@ class IBLSystem {
 	VmaAllocation m_equirectSourceAlloc = VK_NULL_HANDLE;
 	VkImageView m_equirectSourceView = VK_NULL_HANDLE;
 
-	std::array<VkImageView, 5> m_prefilteredMipViews = {};
+	std::vector<VkImageView> m_prefilteredMipViews;
 
 	// --- Persistent resources ---
 	VkImage m_defaultCubemap = VK_NULL_HANDLE;

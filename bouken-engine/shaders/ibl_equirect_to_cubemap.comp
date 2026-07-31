@@ -10,7 +10,7 @@ layout(push_constant) uniform PushConstants {
     uint pc_faceSize;
 } pc;
 
-const vec2 INV_ATAN = vec2(0.1591f, 0.3183f);
+const vec2 INV_ATAN = vec2(0.15915494f, 0.31830989f); // 1/(2*PI), 1/PI
 
 vec3 faceDirToWorld(uint face, vec2 uv) {
     float u = uv.x;

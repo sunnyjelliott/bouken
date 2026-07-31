@@ -84,7 +84,7 @@ void main()
                   + gl_WorkGroupID.x;
 
     // -----------------------------------------------------------------------
-    // PASS 1 — per-texel SH accumulation into shared memory, then workgroup sum
+    // PASS 1 - per-texel SH accumulation into shared memory, then workgroup sum
     // -----------------------------------------------------------------------
     if (pc.pc_pass == 0)
     {
@@ -135,7 +135,7 @@ void main()
     }
 
     // -----------------------------------------------------------------------
-    // PASS 2 — reduce all workgroup partial sums to final SH coefficients
+    // PASS 2 - reduce all workgroup partial sums to final SH coefficients
     // -----------------------------------------------------------------------
     else {
         // Grid-stride accumulation: each of the 256 threads sums every

@@ -83,17 +83,18 @@ void Application::initScene() {
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	// Directional sun - warm, from above and to one side
-	Entity sun = m_world.createEntity();
-	Transform sunTransform{};
-	sunTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f), 0.0f));
-	sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
-	m_world.addComponent(sun, sunTransform);
-	Light sunLight{};
-	sunLight.type = LightType::Directional;
-	sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
-	sunLight.intensity = 3.0f;
-	m_world.addComponent(sun, sunLight);
+	// Entity sun = m_world.createEntity();
+	// Transform sunTransform{};
+	// sunTransform.rotation =
+	//     glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f),
+	//     0.0f));
+	// sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
+	// m_world.addComponent(sun, sunTransform);
+	// Light sunLight{};
+	// sunLight.type = LightType::Directional;
+	// sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
+	// sunLight.intensity = 3.0f;
+	// m_world.addComponent(sun, sunLight);
 
 	// Warm point light - center of courtyard, mid height
 	Entity fill = m_world.createEntity();

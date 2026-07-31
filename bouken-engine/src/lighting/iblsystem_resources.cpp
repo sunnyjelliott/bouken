@@ -191,8 +191,13 @@ void IBLSystem::generateMipmapsCube(VkImage cubemap, uint32_t resolution,
 	}
 
 	// Transition the last mip level (all 6 faces) to SHADER_READ_ONLY -
-	// it was left in TRANSFER_DST by the equirect dispatch's earlier barrier
+	// it was left in TRANSFER_DST by the equirect dispatch's earlier barrier.
+	// levelCount is set explicitly here rather than relying on the loop
+	// above having run - if mipLevels == 1, that loop never executes and
+	// levelCount would otherwise be left at its zero-initialized value,
+	// producing an invalid (levelCount == 0) subresource range.
 	barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+	barrier.subresourceRange.levelCount = 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -241,6 +246,8 @@ void IBLSystem::loadEnvironment(const std::string& hdrPath) {
 	    m_prefilteredEnv, m_prefilteredEnvAlloc, m_prefilteredEnvView);
 	nameImage(m_prefilteredEnv, "ibl_prefiltered_env");
 	nameImageView(m_prefilteredEnvView, "ibl_prefiltered_env_view");
+
+	m_prefilteredMipViews.resize(m_config.prefilteredMipLevels, VK_NULL_HANDLE);
 
 	for (uint32_t mip = 0; mip < m_config.prefilteredMipLevels; ++mip) {
 		VkImageViewCreateInfo viewInfo{};
@@ -291,8 +298,8 @@ void IBLSystem::destroyEnvironmentResources() {
 	// Prefiltered cubemap + its per-mip views
 	for (auto& view : m_prefilteredMipViews) {
 		vkDestroyImageView(m_context.getDevice(), view, nullptr);
-		view = VK_NULL_HANDLE;
 	}
+	m_prefilteredMipViews.clear();
 	vkDestroyImageView(m_context.getDevice(), m_prefilteredEnvView, nullptr);
 	if (m_prefilteredEnv != VK_NULL_HANDLE)
 		vmaDestroyImage(m_context.getAllocator(), m_prefilteredEnv,

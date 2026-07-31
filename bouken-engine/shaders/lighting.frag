@@ -60,7 +60,6 @@ layout(location = 0) out vec4 out_hdrColor;
 const float PI          = 3.14159265359;
 const float INV_PI      = 1.0 / PI;
 const float EPSILON     = 0.0001;
-const vec3  AMBIENT_COLOR   = vec3(0.03, 0.03, 0.04); // dim cool ambient
 
 // -------------------------------------------------------
 // Octahedral decode - inverse of geometry pass encode
@@ -194,7 +193,7 @@ vec3 evaluateSHIrradiance(vec3 N) {
 // -------------------------------------------------------
 // IBL Specular Evaluation
 // -------------------------------------------------------
-const uint  IBL_PREFILTERED_MIP_LEVELS = 5;
+layout(constant_id = 0) const uint IBL_PREFILTERED_MIP_LEVELS = 5;
 
 vec3 evaluateIBLSpecular(vec3 N, vec3 V, float roughness, vec3 F0) {
     vec3  R      = reflect(-V, N);

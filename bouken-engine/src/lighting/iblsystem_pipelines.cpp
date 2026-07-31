@@ -171,15 +171,19 @@ void IBLSystem::createComputePipelines() {
 
 	// --- Transient descriptor pool ---
 	// Worst case across a single loadEnvironment() call:
-	//   equirect(1) + SH(1) + prefilter(5, one per mip) + BRDF LUT(1,
-	//   init-only) = 8 sets
+	//   equirect(1) + SH(1) + prefilter(prefilteredMipLevels, one per mip)
+	//   + BRDF LUT(1, init-only)
 	// Descriptor type totals across all bindings above:
-	//   COMBINED_IMAGE_SAMPLER: equirect(1) + SH(1) + prefilter(5) = 7
-	//   STORAGE_IMAGE:          equirect(1) + prefilter(5) + BRDF LUT(1) = 7
-	//   STORAGE_BUFFER:         SH(2) = 2
+	//   COMBINED_IMAGE_SAMPLER: equirect(1) + SH(1) + prefilter(N) = N + 2
+	//   STORAGE_IMAGE:          equirect(1) + prefilter(N) + BRDF LUT(1) = N +
+	//   2 STORAGE_BUFFER:         SH(2) = 2
+	const uint32_t prefilterMips = m_config.prefilteredMipLevels;
+	const uint32_t maxSets =
+	    prefilterMips + 3;  // equirect + SH + BRDF LUT + N prefilter mips
+
 	std::vector<VkDescriptorPoolSize> poolSizes = {
-	    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7},
-	    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7},
+	    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, prefilterMips + 2},
+	    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, prefilterMips + 2},
 	    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
 	};
 

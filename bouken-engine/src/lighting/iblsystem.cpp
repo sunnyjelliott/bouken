@@ -172,23 +172,6 @@ void bouken::IBLSystem::dispatchEquirectToCubemap(VkImageView equirectView) {
 	                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
 	                     nullptr, 1, &toGeneral);
 
-	// --- Build per-face storage image views (2D_ARRAY, one layer each) ---
-	std::array<VkImageView, 6> faceViews{};
-	for (uint32_t face = 0; face < 6; ++face) {
-		VkImageViewCreateInfo viewInfo{};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.image = m_envCubemap;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-		viewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = face;
-		viewInfo.subresourceRange.layerCount = 1;
-		vkCreateImageView(m_context.getDevice(), &viewInfo, nullptr,
-		                  &faceViews[face]);
-	}
-
 	// --- Allocate and write descriptor set ---
 	VkDescriptorSet ds = m_context.allocateDescriptorSet(
 	    m_computeDescriptorPool, m_equirectToCubemapDSL);
@@ -274,10 +257,8 @@ void bouken::IBLSystem::dispatchEquirectToCubemap(VkImageView equirectView) {
 
 	m_context.endSingleTimeCommands(cmd);
 
-	// --- Cleanup transient views ---
+	// --- Cleanup transient view ---
 	vkDestroyImageView(m_context.getDevice(), cubemapStorageView, nullptr);
-	for (auto& v : faceViews)
-		vkDestroyImageView(m_context.getDevice(), v, nullptr);
 }
 
 void bouken::IBLSystem::dispatchSHProjection() {
@@ -367,7 +348,7 @@ void bouken::IBLSystem::dispatchSHProjection() {
 	                   sizeof(pc1), &pc1);
 	vkCmdDispatch(cmd, groupsXY, groupsXY, 6);
 
-	// Barrier between passes: storage write → storage read
+	// Barrier between passes: storage write -> storage read
 	VkBufferMemoryBarrier passBarrier{};
 	passBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 	passBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -466,21 +447,6 @@ void bouken::IBLSystem::dispatchPrefilter() {
 
 		uint32_t groups = std::max(1u, (mipSize + 15) / 16);
 		vkCmdDispatch(cmd, groups, groups, 6);
-
-		// Barrier between mip dispatches: each mip write must complete
-		// before the next reads from the source cubemap at a lower mip
-		VkImageMemoryBarrier mipBarrier{};
-		mipBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		mipBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-		mipBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-		mipBarrier.image = m_prefilteredEnv;
-		mipBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 1, 0, 6};
-		mipBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		mipBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-
-		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
-		                     nullptr, 0, nullptr, 1, &mipBarrier);
 	}
 
 	// Final transition to SHADER_READ_ONLY for sampling in the lighting pass

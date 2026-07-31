@@ -521,11 +521,27 @@ void RenderSystem::createLightingPass() {
 	VkShaderModule vertModule = createShaderModule(vertCode);
 	VkShaderModule fragModule = createShaderModule(fragCode);
 
+	// Specialization constant: bakes IBLSystem's actual prefilteredMipLevels
+	// into the shader at pipeline-creation time, replacing the shader's own
+	// default (5) so the two can never silently drift apart.
+	uint32_t specPrefilteredMips = m_iblSystem.prefilteredMipLevels();
+
+	VkSpecializationMapEntry specMapEntry{};
+	specMapEntry.constantID = 0;
+	specMapEntry.offset = 0;
+	specMapEntry.size = sizeof(uint32_t);
+
+	VkSpecializationInfo specInfo{};
+	specInfo.mapEntryCount = 1;
+	specInfo.pMapEntries = &specMapEntry;
+	specInfo.dataSize = sizeof(uint32_t);
+	specInfo.pData = &specPrefilteredMips;
+
 	VkPipelineShaderStageCreateInfo shaderStages[] = {
 	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
 	     VK_SHADER_STAGE_VERTEX_BIT, vertModule, "main", nullptr},
 	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
-	     VK_SHADER_STAGE_FRAGMENT_BIT, fragModule, "main", nullptr},
+	     VK_SHADER_STAGE_FRAGMENT_BIT, fragModule, "main", &specInfo},
 	};
 
 	// No vertex input - fullscreen triangle generated in vertex shader

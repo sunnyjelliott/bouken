@@ -86,7 +86,7 @@ vec2 integrateBRDF(float NdotV, float roughness)
         {
             float G    = geometrySmith_IBL(NdotV, NdotL, roughness);
 
-            // Weight: G * VdotH / (NdotH * NdotV) — the standard importance-sampled
+            // Weight: G * VdotH / (NdotH * NdotV) - the standard importance-sampled
             // estimator for the BRDF denominator terms.
             float Gvis = (G * VdotH) / (NdotH * NdotV);
 
@@ -109,8 +109,8 @@ void main()
         return;
 
     // Map texel to (NdotV, roughness) - clamp away from 0 to avoid singularities
-    float NdotV     = max(float(texel.x) / float(pc.pc_resolution - 1), 0.001f);
-    float roughness = max(float(texel.y) / float(pc.pc_resolution - 1), 0.001f);
+    float NdotV     = (float(texel.x) + 0.5f) / float(pc.pc_resolution);
+    float roughness = (float(texel.y) + 0.5f) / float(pc.pc_resolution);
 
     vec2 result = integrateBRDF(NdotV, roughness);
     imageStore(u_brdfLut, ivec2(texel), vec4(result, 0.0f, 1.0f));
