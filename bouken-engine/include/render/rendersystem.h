@@ -101,8 +101,6 @@ class RenderSystem {
 	void recordTonemapPass(VkCommandBuffer commandBuffer, uint32_t imageIndex,
 	                       SwapChain& swapChain);
 
-	VkShaderModule createShaderModule(const std::vector<char>& code);
-
 	VulkanContext& m_context;
 	SwapChain& m_swapChain;
 	LightSystem& m_lightSystem;

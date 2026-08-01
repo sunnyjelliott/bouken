@@ -12,3 +12,4 @@ vcpkg/
 *.ilk
 *.spv
 bouken-engine/assets/models/
+roadmap.md
