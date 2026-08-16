@@ -18,4 +18,6 @@ struct Light {
 	// Spot
 	float innerAngle = 15.0f;  // degrees
 	float outerAngle = 30.0f;  // degrees
+
+	bool castsShadow = false;
 };

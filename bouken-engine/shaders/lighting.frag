@@ -13,10 +13,11 @@ layout(set = 1, binding = 1) uniform sampler2D u_gbuffer1; // oct-encoded normal
 layout(set = 1, binding = 2) uniform sampler2D u_gbuffer2; // roughness + ao + specular + id
 layout(set = 1, binding = 3) uniform sampler2D u_gbuffer3; // emissive + flags
 layout(set = 1, binding = 4) uniform sampler2D u_depth;    // depth buffer
-layout(set = 1, binding = 6) uniform SHCoefficients { vec4 c[9]; } u_sh; // SH Coefficients
-layout(set = 1, binding = 7) uniform samplerCube u_prefilteredEnv; // prefiltered environment map
-layout(set = 1, binding = 8) uniform sampler2D   u_brdfLut; // BRDF LUT
-layout(set = 1, binding = 9) uniform samplerCube u_envCubemap; // final cubemap
+layout(set = 1, binding = 6) uniform sampler2D u_shadowMap;
+layout(set = 1, binding = 7) uniform SHCoefficients { vec4 c[9]; } u_sh; // SH Coefficients
+layout(set = 1, binding = 8) uniform samplerCube u_prefilteredEnv; // prefiltered environment map
+layout(set = 1, binding = 9) uniform sampler2D   u_brdfLut; // BRDF LUT
+layout(set = 1, binding = 10) uniform samplerCube u_envCubemap; // final cubemap
 
 struct LightData {
     vec4     positionAndRadius;   // xyz = pos (point/spot) or dir (directional), w = radius
@@ -24,7 +25,10 @@ struct LightData {
     vec4     directionAndCosOuter; // xyz = direction, w = cos(outerAngle)
     uint     type;                // 0=directional, 1=point, 2=spot
     float    cosInner;
-    float    _pad[2];
+    uint     castsShadow;
+    float    _pad;
+    mat4     lightSpaceMatrix;
+    vec4     shadowAtlasRegion;
 };
 
 layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
@@ -32,6 +36,7 @@ layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
     uint      _pad[3];
     LightData u_lights[];
 };
+
 
 // -------------------------------------------------------
 // Frame data - set 0
@@ -209,6 +214,26 @@ vec3 evaluateIBLSpecular(vec3 N, vec3 V, float roughness, vec3 F0) {
     return prefilteredColor * (F0 * brdf.r + brdf.g);
 }
 
+// -------------------------------------------------------
+// Shadow Map Sampling
+// -------------------------------------------------------
+float sampleShadow(vec3 worldPos, mat4 lightSpaceMatrix) {
+    vec4 shadowClip = lightSpaceMatrix * vec4(worldPos, 1.0);
+    vec3 shadowNDC  = shadowClip.xyz / shadowClip.w;
+    vec2 shadowUV   = shadowNDC.xy * 0.5 + 0.5;
+
+    if (shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
+        shadowUV.y < 0.0 || shadowUV.y > 1.0 || shadowNDC.z > 1.0) {
+        return 1.0; // outside the caster's frustum - unshadowed
+    }
+
+    float shadowDepth  = texture(u_shadowMap, shadowUV).r;
+    float currentDepth = shadowNDC.z;
+    const float bias = 0.002;
+
+    return (currentDepth - bias > shadowDepth) ? 0.0 : 1.0;
+}
+
 void main() {
     // -------------------------------------------------------
     // Sample G-buffer
@@ -295,9 +320,13 @@ void main() {
                 // Smooth angular falloff between inner and outer cone
                 float spotFalloff = smoothstep(cosOuter, cosInner, cosAngle);
 
+                float shadow = (light.castsShadow == 1u)
+                    ? sampleShadow(ws_position, light.lightSpaceMatrix)
+                    : 1.0;
+
                 directLight += evaluateBRDF(ws_normal, V, L,
                                             baseColor, metallic, roughness)
-                            * lightColor * attenuation * spotFalloff;
+                            * lightColor * attenuation * spotFalloff * shadow;
             }
         }
     }

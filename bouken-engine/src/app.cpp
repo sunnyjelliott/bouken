@@ -28,7 +28,8 @@ class UsdDiagnosticDelegate final : public TfDiagnosticMgr::Delegate {
 
 Application::Application()
     : m_iblSystem(m_context),
-      m_renderSystem(m_context, m_swapChain, m_lightSystem, m_iblSystem) {}
+      m_renderSystem(m_context, m_swapChain, m_lightSystem, m_shadowSystem,
+                     m_iblSystem) {}
 
 void Application::run() {
 	initWindow();
@@ -64,6 +65,7 @@ void Application::initVulkan() {
 	m_materialManager.initialize();
 
 	m_lightSystem.initialize(m_context);
+	m_shadowSystem.initialize(m_context);
 	m_iblSystem.init();
 	m_renderSystem.initialize();
 	m_renderSystem.updateIBLDescriptors();
@@ -83,17 +85,16 @@ void Application::initScene() {
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	// Directional sun - warm, from above and to one side
-	// Entity sun = m_world.createEntity();
-	// Transform sunTransform{};
-	// sunTransform.rotation =
-	//     glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f),
-	//     0.0f));
-	// sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
-	// m_world.addComponent(sun, sunTransform);
-	// Light sunLight{};
-	// sunLight.type = LightType::Directional;
-	// sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
-	// sunLight.intensity = 3.0f;
+	Entity sun = m_world.createEntity();
+	Transform sunTransform{};
+	sunTransform.rotation =
+	    glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f), 0.0f));
+	sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
+	m_world.addComponent(sun, sunTransform);
+	Light sunLight{};
+	sunLight.type = LightType::Directional;
+	sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
+	sunLight.intensity = 3.0f;
 	// m_world.addComponent(sun, sunLight);
 
 	// Warm point light - center of courtyard, mid height
@@ -108,7 +109,7 @@ void Application::initScene() {
 	fillLight.color = glm::vec3(1.0f, 0.85f, 0.6f);
 	fillLight.intensity = 200.0f;
 	fillLight.radius = 12.0f;
-	m_world.addComponent(fill, fillLight);
+	// m_world.addComponent(fill, fillLight);
 
 	// Cool point light - opposite end of the colonnade
 	Entity cool = m_world.createEntity();
@@ -122,14 +123,14 @@ void Application::initScene() {
 	coolLight.color = glm::vec3(0.6f, 0.8f, 1.0f);
 	coolLight.intensity = 150.0f;
 	coolLight.radius = 10.0f;
-	m_world.addComponent(cool, coolLight);
+	// m_world.addComponent(cool, coolLight);
 
 	// Spot light - pointing down from above the entrance
 	Entity spot = m_world.createEntity();
 	Transform spotTransform{};
-	spotTransform.position = glm::vec3(-8.0f, 7.0f, 0.0f);
+	spotTransform.position = glm::vec3(-6.0f, 5.0f, 0.0f);
 	spotTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-80.0f), 0.0f, 0.0f));
+	    glm::quat(glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f));
 	spotTransform.worldMatrix =
 	    glm::translate(glm::mat4(1.0f), spotTransform.position) *
 	    glm::mat4_cast(spotTransform.rotation);
@@ -141,6 +142,7 @@ void Application::initScene() {
 	spotLight.radius = 10.0f;
 	spotLight.innerAngle = 15.0f;
 	spotLight.outerAngle = 30.0f;
+	spotLight.castsShadow = true;
 	m_world.addComponent(spot, spotLight);
 
 	SceneLoadOptions options;
@@ -195,8 +197,6 @@ void Application::mainLoop() {
 		// Update transforms
 		m_transformSystem.update(m_world);
 
-		m_lightSystem.update(m_world);
-
 		// Render
 		m_renderSystem.drawFrame(m_swapChain, m_world, m_cameraSystem,
 		                         m_materialManager);
@@ -207,6 +207,7 @@ void Application::mainLoop() {
 
 void Application::cleanup() {
 	m_renderSystem.cleanup();
+	m_shadowSystem.cleanup();
 	m_lightSystem.cleanup();
 	m_iblSystem.cleanup();
 	m_materialManager.cleanup();

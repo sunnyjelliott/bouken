@@ -5,8 +5,10 @@
 #include "boundingbox.h"
 #include "camerasystem.h"
 #include "frustum.h"
+#include "lightsystem.h"
 #include "materialmanager.h"
 #include "primitives.h"
+#include "shadows/shadowsystem.h"
 #include "world.h"
 
 static uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
@@ -27,11 +29,12 @@ static uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
 }
 
 RenderSystem::RenderSystem(VulkanContext& context, SwapChain& swapchain,
-                           LightSystem& lightSystem,
+                           LightSystem& lightSystem, ShadowSystem& shadowSystem,
                            bouken::IBLSystem& iblSystem)
     : m_context(context),
       m_swapChain(swapchain),
       m_lightSystem(lightSystem),
+      m_shadowSystem(shadowSystem),
       m_iblSystem(iblSystem) {}
 
 void RenderSystem::initialize() {
@@ -139,12 +142,20 @@ void RenderSystem::cleanup() {
 	m_hdr.target.destroy(m_context.getDevice(), m_context.getAllocator());
 }
 
+const RenderSystem::MeshInfo* RenderSystem::getMeshInfo(uint32_t meshID) const {
+	auto it = m_meshes.find(meshID);
+	return (it != m_meshes.end()) ? &it->second : nullptr;
+}
+
 void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
                              const CameraSystem& cameraSystem,
                              MaterialManager& materialManager) {
 	vkWaitForFences(m_context.getDevice(), 1, &m_inFlightFence, VK_TRUE,
 	                UINT64_MAX);
 	vkResetFences(m_context.getDevice(), 1, &m_inFlightFence);
+
+	m_lightSystem.update(world);
+	m_shadowSystem.update(world, m_lightSystem);
 
 	uint32_t imageIndex;
 	vkAcquireNextImageKHR(m_context.getDevice(), swapChain.getSwapChain(),

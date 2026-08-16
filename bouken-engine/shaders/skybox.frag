@@ -20,7 +20,7 @@ layout(set = 0, binding = 0) uniform FrameData {
 } u_frame;
 
 layout(set = 1, binding = 4) uniform sampler2D u_depth;
-layout(set = 1, binding = 9) uniform samplerCube u_envCubemap;
+layout(set = 1, binding = 10) uniform samplerCube u_envCubemap;
 
 void main() {
     // The lighting pass has no depth attachment (sampling an image that is also

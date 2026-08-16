@@ -6,6 +6,7 @@
 #include "materialmanager.h"
 #include "pch.h"
 #include "render/rendersystem.h"
+#include "shadows/shadowsystem.h"
 #include "swapchain.h"
 #include "texturemanager.h"
 #include "transformsystem.h"
@@ -43,6 +44,7 @@ class Application {
 	TextureManager m_textureManager;
 	MaterialManager m_materialManager;
 	LightSystem m_lightSystem;
+	ShadowSystem m_shadowSystem;
 
 	float m_lastFrameTime = 0.0f;
 };

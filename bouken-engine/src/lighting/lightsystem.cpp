@@ -25,6 +25,9 @@ void LightSystem::update(World& world) {
 	GPULight* lightPtr = reinterpret_cast<GPULight*>(
 	    static_cast<uint8_t*>(m_buffer.mapped) + sizeof(glm::vec4));
 
+	m_entityToIndex.clear();
+	uint32_t index = 0;
+
 	for (Entity entity : world.view<Transform, Light>()) {
 		if (m_lightCount >= MAX_LIGHTS) {
 			std::cerr << "LightSystem: MAX_LIGHTS (" << MAX_LIGHTS
@@ -63,15 +66,23 @@ void LightSystem::update(World& world) {
 				gpu.directionAndCosOuter =
 				    glm::vec4(dir, std::cos(glm::radians(light.outerAngle)));
 				gpu.cosInner = std::cos(glm::radians(light.innerAngle));
+				gpu.castsShadow = light.castsShadow ? 1 : 0;
 				break;
 			}
 		}
 
 		lightPtr[m_lightCount++] = gpu;
+		m_entityToIndex[entity] = index;
+		index++;
 	}
 
 	countPtr[0] = m_lightCount;
 	countPtr[1] = 0;
 	countPtr[2] = 0;
 	countPtr[3] = 0;
+}
+
+uint32_t LightSystem::getLightIndex(Entity entity) const {
+	auto it = m_entityToIndex.find(entity);
+	return (it != m_entityToIndex.end()) ? it->second : UINT32_MAX;
 }

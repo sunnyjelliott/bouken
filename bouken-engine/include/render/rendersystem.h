@@ -17,6 +17,7 @@ class CameraSystem;
 class MaterialManager;
 class TextureManager;
 class LightSystem;
+class ShadowSystem;
 
 struct RenderItem {
 	Entity entity;
@@ -29,7 +30,7 @@ struct RenderItem {
 class RenderSystem {
    public:
 	explicit RenderSystem(VulkanContext& context, SwapChain& swapChain,
-	                      LightSystem& lightSystem,
+	                      LightSystem& lightSystem, ShadowSystem& shadowSystem,
 	                      bouken::IBLSystem& iblSystem);
 
 	void initialize();
@@ -51,6 +52,17 @@ class RenderSystem {
 	void updateIBLDescriptors();
 	void createMaterialDescriptorSets(MaterialManager& materialManager,
 	                                  TextureManager& textureManager);
+
+	struct MeshInfo {
+		uint32_t firstVertex;
+		uint32_t vertexCount;
+		uint32_t firstIndex;
+		uint32_t indexCount;
+	};
+
+	VkBuffer getVertexBuffer() const { return m_vertexBuffer.buffer; }
+	VkBuffer getIndexBuffer() const { return m_indexBuffer.buffer; }
+	const MeshInfo* getMeshInfo(uint32_t meshID) const;
 
    private:
 	void createDepthResources();
@@ -104,6 +116,7 @@ class RenderSystem {
 	VulkanContext& m_context;
 	SwapChain& m_swapChain;
 	LightSystem& m_lightSystem;
+	ShadowSystem& m_shadowSystem;
 	bouken::IBLSystem& m_iblSystem;
 	uint32_t m_currentImageIndex = 0;
 
@@ -168,12 +181,6 @@ class RenderSystem {
 	// TODO: Add multiple pipelines (wireframe, transparent, etc.)
 	// TODO: Add depth/stencil state when implementing depth buffer
 
-	struct MeshInfo {
-		uint32_t firstVertex;
-		uint32_t vertexCount;
-		uint32_t firstIndex;
-		uint32_t indexCount;
-	};
 	std::unordered_map<uint32_t, MeshInfo> m_meshes;
 	uint32_t m_nextMeshID = 0;
 

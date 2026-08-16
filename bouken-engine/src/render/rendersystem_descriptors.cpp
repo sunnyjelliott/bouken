@@ -2,6 +2,7 @@
 #include "materialmanager.h"
 #include "render/framedata.h"
 #include "render/rendersystem.h"
+#include "shadows/shadowsystem.h"
 #include "texturemanager.h"
 #include "vulkantexturebackend.h"
 
@@ -26,7 +27,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// Set 1a - lighting pass: 5 G-buffer samplers + depth + light SSBO + IBL
-	std::array<VkDescriptorSetLayoutBinding, 10> lightingBindings{};
+	std::array<VkDescriptorSetLayoutBinding, 11> lightingBindings{};
 
 	// Binding 0..4: G-buffer samplers
 	for (uint32_t i = 0; i < 5; i++) {
@@ -43,32 +44,39 @@ void RenderSystem::createDescriptorSetLayouts() {
 	lightingBindings[5].descriptorCount = 1;
 	lightingBindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// Binding 6: SH coefficients UBO
+	// Binding 6: shadow map
 	lightingBindings[6].binding = 6;
-	lightingBindings[6].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	lightingBindings[6].descriptorType =
+	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	lightingBindings[6].descriptorCount = 1;
 	lightingBindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// Binding 7: prefiltered environment cubemap
+	// Binding 7: SH coefficients UBO
 	lightingBindings[7].binding = 7;
-	lightingBindings[7].descriptorType =
-	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	lightingBindings[7].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	lightingBindings[7].descriptorCount = 1;
 	lightingBindings[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// Binding 8: BRDF LUT
+	// Binding 8: prefiltered environment cubemap
 	lightingBindings[8].binding = 8;
 	lightingBindings[8].descriptorType =
 	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	lightingBindings[8].descriptorCount = 1;
 	lightingBindings[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// Binding 9: environment cubemap
+	// Binding 9: BRDF LUT
 	lightingBindings[9].binding = 9;
 	lightingBindings[9].descriptorType =
 	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	lightingBindings[9].descriptorCount = 1;
-	lightingBindings[9].stageFlags =
+	lightingBindings[9].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 10: environment cubemap
+	lightingBindings[10].binding = 10;
+	lightingBindings[10].descriptorType =
+	    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	lightingBindings[10].descriptorCount = 1;
+	lightingBindings[10].stageFlags =
 	    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	VkDescriptorSetLayoutCreateInfo lightingLayoutInfo{};
@@ -167,10 +175,11 @@ void RenderSystem::createDescriptorPool() {
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount = swapImageCount + MAX_MATERIALS + 1;
 
-	// Combined image samplers: lighting(5) + tonemap(1) + materials(6 * max)
+	// Combined image samplers: lighting(6) + shadows(1) +
+	// tonemap(1) + materials(6 * max)
 	//  + IBL(prefiltered environment map + BRDF LUT + environment cubemap)
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount = 5 + 1 + (6 * MAX_MATERIALS) + 3;
+	poolSizes[1].descriptorCount = 6 + 1 + (6 * MAX_MATERIALS) + 3;
 
 	// SSBOs: lighting, then cluster lighting (TODO)
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -291,7 +300,8 @@ void RenderSystem::createLightingDescriptorSet() {
 	// 2: roughnessAOSpecID
 	// 3: emissiveFlags
 	// 4: depth
-	std::array<VkDescriptorImageInfo, 5> imageInfos{};
+	// 5: shadows
+	std::array<VkDescriptorImageInfo, 6> imageInfos{};
 	imageInfos[0] = {m_gbufferSampler,
 	                 m_gbuffer.baseColorMetallic.getImageView(),
 	                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -304,6 +314,9 @@ void RenderSystem::createLightingDescriptorSet() {
 	                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 	imageInfos[4] = {m_gbufferSampler, m_depth.target.getImageView(),
 	                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+	imageInfos[5] = {m_shadowSystem.getShadowSampler(),
+	                 m_shadowSystem.getShadowMapView(),
+	                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 
 	VkDescriptorBufferInfo lightBufferInfo{};
 	lightBufferInfo.buffer = m_lightSystem.getBuffer();
@@ -314,7 +327,7 @@ void RenderSystem::createLightingDescriptorSet() {
 	// called after IBLSystem::loadEnvironment() succeeds - the views/buffer
 	// backing them don't exist yet at this point in initialization.
 
-	std::array<VkWriteDescriptorSet, 6> writes{};
+	std::array<VkWriteDescriptorSet, 7> writes{};
 	for (uint32_t i = 0; i < 5; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = m_lightingSet;
@@ -332,6 +345,14 @@ void RenderSystem::createLightingDescriptorSet() {
 	writes[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	writes[5].descriptorCount = 1;
 	writes[5].pBufferInfo = &lightBufferInfo;
+
+	writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[6].dstSet = m_lightingSet;
+	writes[6].dstBinding = 6;
+	writes[6].dstArrayElement = 0;
+	writes[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[6].descriptorCount = 1;
+	writes[6].pImageInfo = &imageInfos[5];
 
 	vkUpdateDescriptorSets(m_context.getDevice(),
 	                       static_cast<uint32_t>(writes.size()), writes.data(),
@@ -369,28 +390,28 @@ void RenderSystem::updateIBLDescriptors() {
 
 	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writes[0].dstSet = m_lightingSet;  // set 1
-	writes[0].dstBinding = 6;
+	writes[0].dstBinding = 7;
 	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	writes[0].descriptorCount = 1;
 	writes[0].pBufferInfo = &shInfo;
 
 	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writes[1].dstSet = m_lightingSet;
-	writes[1].dstBinding = 7;
+	writes[1].dstBinding = 8;
 	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[1].descriptorCount = 1;
 	writes[1].pImageInfo = &prefilteredInfo;
 
 	writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writes[2].dstSet = m_lightingSet;
-	writes[2].dstBinding = 8;
+	writes[2].dstBinding = 9;
 	writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[2].descriptorCount = 1;
 	writes[2].pImageInfo = &lutInfo;
 
 	writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writes[3].dstSet = m_lightingSet;
-	writes[3].dstBinding = 9;
+	writes[3].dstBinding = 10;
 	writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[3].descriptorCount = 1;
 	writes[3].pImageInfo = &envInfo;

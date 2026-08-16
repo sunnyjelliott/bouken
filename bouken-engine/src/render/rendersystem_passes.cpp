@@ -1,39 +1,7 @@
 #include "render/rendersystem.h"
+#include "render/shaderutils.h"
 
 namespace {
-
-std::vector<char> readFile(const std::string& filename) {
-	std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open()) {
-		throw std::runtime_error("Failed to open file: " + filename);
-	}
-
-	size_t fileSize = (size_t)file.tellg();
-	std::vector<char> buffer(fileSize);
-
-	file.seekg(0);
-	file.read(buffer.data(), fileSize);
-	file.close();
-
-	return buffer;
-}
-
-VkShaderModule createShaderModule(VulkanContext& context,
-                                  const std::vector<char>& code) {
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = code.size();
-	createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-	VkShaderModule shaderModule = VK_NULL_HANDLE;
-	if (vkCreateShaderModule(context.getDevice(), &createInfo, nullptr,
-	                         &shaderModule) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create shader module!");
-	}
-
-	return shaderModule;
-}
 
 void setObjectName(VulkanContext& context, VkObjectType type, uint64_t handle,
                    const std::string& name) {
@@ -122,25 +90,24 @@ VkSubpassDependency depthWriteToDepthTest(uint32_t srcSubpass,
 // Color written as an attachment -> sampled in a fragment shader.
 VkSubpassDependency colorWriteToShaderRead(uint32_t srcSubpass,
                                            uint32_t dstSubpass) {
-	return dependency(srcSubpass, dstSubpass,
-	                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-	                  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-	                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-	                  VK_ACCESS_SHADER_READ_BIT);
+	return dependency(
+	    srcSubpass, dstSubpass, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 }
 
 // Depth written as an attachment -> sampled as a texture in a fragment shader.
 VkSubpassDependency depthWriteToShaderRead(uint32_t srcSubpass,
                                            uint32_t dstSubpass) {
-	return dependency(srcSubpass, dstSubpass,
-	                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-	                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-	                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-	                  VK_ACCESS_SHADER_READ_BIT);
+	return dependency(
+	    srcSubpass, dstSubpass, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+	    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 }
 
 struct RenderPassDesc {
-	std::vector<VkAttachmentDescription> attachments;  // color first, depth last
+	std::vector<VkAttachmentDescription>
+	    attachments;  // color first, depth last
 	bool hasDepthAttachment = false;
 	std::vector<VkSubpassDependency> dependencies;
 	std::string debugName;
@@ -197,12 +164,12 @@ VkRenderPass buildRenderPass(VulkanContext& context,
 
 VkFramebuffer buildFramebuffer(VulkanContext& context, VkRenderPass renderPass,
                                const std::vector<VkImageView>& attachments,
-                               VkExtent2D extent, const std::string& debugName) {
+                               VkExtent2D extent,
+                               const std::string& debugName) {
 	VkFramebufferCreateInfo framebufferInfo{};
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	framebufferInfo.renderPass = renderPass;
-	framebufferInfo.attachmentCount =
-	    static_cast<uint32_t>(attachments.size());
+	framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
 	framebufferInfo.pAttachments = attachments.data();
 	framebufferInfo.width = extent.width;
 	framebufferInfo.height = extent.height;
@@ -294,8 +261,8 @@ void buildGraphicsPipeline(VulkanContext& context,
 	              desc.debugName + "_layout");
 
 	// --- Shader stages ---
-	VkShaderModule vertModule =
-	    createShaderModule(context, readFile(desc.vertShaderPath));
+	VkShaderModule vertModule = ShaderUtils::createShaderModule(
+	    context, ShaderUtils::readFile(desc.vertShaderPath));
 	VkShaderModule fragModule = VK_NULL_HANDLE;
 
 	std::vector<VkPipelineShaderStageCreateInfo> stages;
@@ -308,7 +275,8 @@ void buildGraphicsPipeline(VulkanContext& context,
 	stages.push_back(vertStage);
 
 	if (desc.fragShaderPath != nullptr) {
-		fragModule = createShaderModule(context, readFile(desc.fragShaderPath));
+		fragModule = ShaderUtils::createShaderModule(
+		    context, ShaderUtils::readFile(desc.fragShaderPath));
 
 		VkPipelineShaderStageCreateInfo fragStage{};
 		fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -416,7 +384,8 @@ void buildGraphicsPipeline(VulkanContext& context,
 	vkDestroyShaderModule(context.getDevice(), vertModule, nullptr);
 
 	if (result != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create pipeline: " + desc.debugName);
+		throw std::runtime_error("Failed to create pipeline: " +
+		                         desc.debugName);
 	}
 
 	setObjectName(context, VK_OBJECT_TYPE_PIPELINE,
@@ -726,11 +695,11 @@ void RenderSystem::createGBufferTargets() {
 }
 
 void RenderSystem::createHDRTarget() {
-	createTarget(m_context, m_hdr.target, m_swapChain.getExtent().width,
-	             m_swapChain.getExtent().height, VK_FORMAT_R16G16B16A16_SFLOAT,
-	             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-	                 VK_IMAGE_USAGE_SAMPLED_BIT,
-	             VK_IMAGE_ASPECT_COLOR_BIT, "hdr_target");
+	createTarget(
+	    m_context, m_hdr.target, m_swapChain.getExtent().width,
+	    m_swapChain.getExtent().height, VK_FORMAT_R16G16B16A16_SFLOAT,
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+	    VK_IMAGE_ASPECT_COLOR_BIT, "hdr_target");
 }
 
 void RenderSystem::createSamplers() {
