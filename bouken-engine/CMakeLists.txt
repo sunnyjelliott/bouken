@@ -221,6 +221,8 @@ set(SHADERS
     ${SHADER_SOURCE_DIR}/lighting.frag
     ${SHADER_SOURCE_DIR}/tonemap.frag
     ${SHADER_SOURCE_DIR}/skybox.frag
+    ${SHADER_SOURCE_DIR}/msm_moments.frag
+    ${SHADER_SOURCE_DIR}/blur.frag
     
     ${SHADER_SOURCE_DIR}/ibl_brdf_lut.comp
     ${SHADER_SOURCE_DIR}/ibl_equirect_to_cubemap.comp
@@ -275,6 +277,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     include/render
     include/lighting
     include/gpu
+    include/shadows
     ${stb_SOURCE_DIR}
     ${mikktspace_SOURCE_DIR}
 )

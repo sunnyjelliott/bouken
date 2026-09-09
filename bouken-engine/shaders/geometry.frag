@@ -47,10 +47,10 @@ const uint FLAG_HAS_EMISSIVE  = 1u << 5;
 // GBuffer2 RGBA8_UNORM  : roughness, ao, specular, materialID
 // GBuffer3 RGBA16F      : emissive.rgb, flags
 // -------------------------------------------------------
-layout(location = 0) out vec4 out_baseColorMetallic;
-layout(location = 1) out vec2 out_normals;
-layout(location = 2) out vec4 out_roughnessAOSpecID;
-layout(location = 3) out vec4 out_emissiveFlags;
+layout(location = 0) out vec4 o_baseColorMetallic;
+layout(location = 1) out vec2 o_normals;
+layout(location = 2) out vec4 o_roughnessAOSpecID;
+layout(location = 3) out vec4 o_emissiveFlags;
 
 // -------------------------------------------------------
 // Constants
@@ -129,24 +129,24 @@ void main() {
     // -------------------------------------------------------
 
     // GBuffer0: baseColor.rgb + metallic in alpha
-    out_baseColorMetallic = vec4(baseColor, metallic);
+    o_baseColorMetallic = vec4(baseColor, metallic);
 
     // GBuffer1: octahedral-encoded normal
-    out_normals = octEncode(ws_normal);
+    o_normals = octEncode(ws_normal);
 
     // GBuffer2: roughness, ao, specular (constant for now), materialID
     // materialID packed as normalised byte - 0 for now, lighting pass reads it
-    out_roughnessAOSpecID = vec4(roughness, ao, DEFAULT_SPECULAR, 0.0);
+    o_roughnessAOSpecID = vec4(roughness, ao, DEFAULT_SPECULAR, 0.0);
 
     // GBuffer3: emissive + flags
     // flags byte: bit 0 = has emissive, others reserved
     float flags = (dot(emissive, emissive) > 0.0) ? 1.0 : 0.0;
-    out_emissiveFlags = vec4(emissive, flags);
+    o_emissiveFlags = vec4(emissive, flags);
 
     // DEBUG: visualize world-space normal
     // Replace the G-buffer pack block temporarily
-    // out_baseColorMetallic = vec4(ws_normal * 0.5 + 0.5, 1.0);
-    // out_normals           = octEncode(ws_normal);
-    // out_roughnessAOSpecID = vec4(0.5, 1.0, 0.5, 0.0);
-    // out_emissiveFlags     = vec4(0.0);
+    // o_baseColorMetallic = vec4(ws_normal * 0.5 + 0.5, 1.0);
+    // o_normals           = octEncode(ws_normal);
+    // o_roughnessAOSpecID = vec4(0.5, 1.0, 0.5, 0.0);
+    // o_emissiveFlags     = vec4(0.0);
 }

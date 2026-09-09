@@ -95,7 +95,8 @@ void Application::initScene() {
 	sunLight.type = LightType::Directional;
 	sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
 	sunLight.intensity = 3.0f;
-	// m_world.addComponent(sun, sunLight);
+	sunLight.castsShadow = true;
+	m_world.addComponent(sun, sunLight);
 
 	// Warm point light - center of courtyard, mid height
 	Entity fill = m_world.createEntity();
@@ -125,16 +126,16 @@ void Application::initScene() {
 	coolLight.radius = 10.0f;
 	// m_world.addComponent(cool, coolLight);
 
-	// Spot light - pointing down from above the entrance
-	Entity spot = m_world.createEntity();
-	Transform spotTransform{};
-	spotTransform.position = glm::vec3(-6.0f, 5.0f, 0.0f);
-	spotTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f));
-	spotTransform.worldMatrix =
-	    glm::translate(glm::mat4(1.0f), spotTransform.position) *
-	    glm::mat4_cast(spotTransform.rotation);
-	m_world.addComponent(spot, spotTransform);
+	// Spot light pointed at two pillars
+	Entity spotA = m_world.createEntity();
+	Transform spotATransform{};
+	spotATransform.position = glm::vec3(-2.0f, 3.0f, 4.0f);
+	spotATransform.rotation =
+	    glm::quat(glm::vec3(glm::radians(-30.0f), glm::radians(90.0f), 0.0f));
+	spotATransform.worldMatrix =
+	    glm::translate(glm::mat4(1.0f), spotATransform.position) *
+	    glm::mat4_cast(spotATransform.rotation);
+	m_world.addComponent(spotA, spotATransform);
 	Light spotLight{};
 	spotLight.type = LightType::Spot;
 	spotLight.color = glm::vec3(1.0f, 1.0f, 0.9f);
@@ -143,7 +144,19 @@ void Application::initScene() {
 	spotLight.innerAngle = 15.0f;
 	spotLight.outerAngle = 30.0f;
 	spotLight.castsShadow = true;
-	m_world.addComponent(spot, spotLight);
+	m_world.addComponent(spotA, spotLight);
+
+	// Second Spot light pointed at two pillars
+	Entity spotB = m_world.createEntity();
+	Transform spotBTransform{};
+	spotBTransform.position = glm::vec3(-2.0f, 3.0f, 0.0f);
+	spotBTransform.rotation =
+	    glm::quat(glm::vec3(glm::radians(-30.0f), glm::radians(180.0f), 0.0f));
+	spotBTransform.worldMatrix =
+	    glm::translate(glm::mat4(1.0f), spotBTransform.position) *
+	    glm::mat4_cast(spotBTransform.rotation);
+	m_world.addComponent(spotB, spotBTransform);
+	m_world.addComponent(spotB, spotLight);
 
 	SceneLoadOptions options;
 	options.createHeirarchy = true;

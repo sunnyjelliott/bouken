@@ -1,7 +1,7 @@
 #version 450
 
 layout (location = 0) in vec3 v_direction;
-layout (location = 0) out vec4 out_hdrColor;
+layout (location = 0) out vec4 o_hdrColor;
 
 // -------------------------------------------------------
 // Frame data - set 0
@@ -30,5 +30,5 @@ void main() {
     vec2 uv = gl_FragCoord.xy / u_frame.screenExtent;
     if (texture(u_depth, uv).r < 1.0) discard;
 
-    out_hdrColor = vec4(texture(u_envCubemap, normalize(v_direction)).rgb, 1.0);
+    o_hdrColor = vec4(texture(u_envCubemap, normalize(v_direction)).rgb, 1.0);
 }

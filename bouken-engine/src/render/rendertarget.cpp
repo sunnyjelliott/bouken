@@ -28,7 +28,7 @@ void RenderTarget::create(VulkanContext& context, VmaAllocator allocator,
 	if (vmaCreateImage(allocator, &imageInfo, &allocInfo, &m_image,
 	                   &m_allocation, nullptr) != VK_SUCCESS) {
 		throw std::runtime_error("RenderTarget: failed to create image: " +
-		                         std::string(desc.debugName));
+		                         desc.debugName);
 	}
 
 	// --- Debug label on the image ---
@@ -37,7 +37,7 @@ void RenderTarget::create(VulkanContext& context, VmaAllocator allocator,
 		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
 		nameInfo.objectHandle = reinterpret_cast<uint64_t>(m_image);
-		nameInfo.pObjectName = desc.debugName.data();
+		nameInfo.pObjectName = desc.debugName.c_str();
 		// No-op if the extension isn't loaded - context guards this
 		context.setDebugName(nameInfo);
 	}
@@ -57,12 +57,12 @@ void RenderTarget::create(VulkanContext& context, VmaAllocator allocator,
 	if (vkCreateImageView(context.getDevice(), &viewInfo, nullptr,
 	                      &m_imageView) != VK_SUCCESS) {
 		throw std::runtime_error("RenderTarget: failed to create image view: " +
-		                         std::string(desc.debugName));
+		                         desc.debugName);
 	}
 
 	// --- Debug label on the image view ---
 	if (!desc.debugName.empty()) {
-		std::string viewName = std::string(desc.debugName) + "_view";
+		std::string viewName = desc.debugName + "_view";
 		VkDebugUtilsObjectNameInfoEXT nameInfo{};
 		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;

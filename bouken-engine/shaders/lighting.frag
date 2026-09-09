@@ -13,6 +13,7 @@ layout(set = 1, binding = 1) uniform sampler2D u_gbuffer1; // oct-encoded normal
 layout(set = 1, binding = 2) uniform sampler2D u_gbuffer2; // roughness + ao + specular + id
 layout(set = 1, binding = 3) uniform sampler2D u_gbuffer3; // emissive + flags
 layout(set = 1, binding = 4) uniform sampler2D u_depth;    // depth buffer
+
 layout(set = 1, binding = 6) uniform sampler2D u_shadowMap;
 layout(set = 1, binding = 7) uniform SHCoefficients { vec4 c[9]; } u_sh; // SH Coefficients
 layout(set = 1, binding = 8) uniform samplerCube u_prefilteredEnv; // prefiltered environment map
@@ -37,7 +38,6 @@ layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
     LightData u_lights[];
 };
 
-
 // -------------------------------------------------------
 // Frame data - set 0
 // Must match FrameUBO in framedata.h
@@ -57,7 +57,7 @@ layout(set = 0, binding = 0) uniform FrameData {
 // -------------------------------------------------------
 // Output - HDR color
 // -------------------------------------------------------
-layout(location = 0) out vec4 out_hdrColor;
+layout(location = 0) out vec4 o_hdrColor;
 
 // -------------------------------------------------------
 // Constants
@@ -217,7 +217,73 @@ vec3 evaluateIBLSpecular(vec3 N, vec3 V, float roughness, vec3 F0) {
 // -------------------------------------------------------
 // Shadow Map Sampling
 // -------------------------------------------------------
-float sampleShadow(vec3 worldPos, mat4 lightSpaceMatrix) {
+
+const mat4 MOMENT_DECODE = mat4(
+	0.2227744146,  0.1549679261,  0.1451988946,  0.163127443,
+	0.0771972861,  0.1394629426,  0.2120202157,  0.2591432266,
+	0.7926986636,  0.7963415838,  0.7258694464,  0.6539092497,
+	0.0319417555, -0.1722823173, -0.2758014811, -0.3376131734
+);
+const float MOMENT_DECODE_BIAS = 0.035955884801;
+
+// 4-moment shadow reconstruction (Peters & Klein, "Moment Shadow Mapping").
+// moments = (E[z], E[z^2], E[z^3], E[z^4]) sampled from the resolved (blurred)
+// moments texture. fragmentDepth is the receiving fragment's depth in the
+// light's NDC space. Returns visibility: 1.0 = fully lit, 0.0 = fully shadowed.
+float momentShadow4MSM(vec4 encodedMoments, float fragmentDepth) {
+
+    vec4 quantized = encodedMoments;
+	quantized.x -= MOMENT_DECODE_BIAS;
+	vec4 moments = MOMENT_DECODE * quantized;
+
+	const float depthBias = 0.0005;   // same role as the old hard-compare bias
+	const float momentBias = 3e-5;    // blends toward (0.5,0.5,0.5,0.5) - light-bleed control
+
+	vec4 b = mix(moments, vec4(0.5), momentBias);
+
+	// Solve for the two-node quadrature via a Cholesky-style factorization
+	// of the Hankel matrix built from the moments.
+	float L32D22 = fma(-b.x, b.y, b.z);
+	float D22 = fma(-b.x, b.x, b.y);
+	float squaredDepthVariance = fma(-b.y, b.y, b.w);
+	float D33D22 = dot(vec2(squaredDepthVariance, -L32D22), vec2(D22, L32D22));
+	float InvD22 = 1.0 / D22;
+	float L32 = L32D22 * InvD22;
+
+	vec3 z;
+	z[0] = fragmentDepth - depthBias;
+
+	vec3 c = vec3(1.0, z[0], z[0] * z[0]);
+	c[1] -= b.x;
+	c[2] -= b.y + L32 * c[1];
+	c[1] /= D22;
+	c[2] *= D22 / D33D22;
+	c[1] -= L32 * c[2];
+	c[0] -= dot(c.yz, b.xy);
+
+	float InvC2 = 1.0 / c[2];
+	float p = c[1] * InvC2;
+	float q = c[0] * InvC2;
+	float r = sqrt(max(p * p * 0.25 - q, 0.0));
+
+	z[1] = -p * 0.5 - r;
+	z[2] = -p * 0.5 + r;
+
+	vec4 switchVal =
+	    (z[2] < z[0])
+	        ? vec4(z[1], z[0], 1.0, 1.0)
+	        : ((z[1] < z[0]) ? vec4(z[0], z[1], 0.0, 1.0) : vec4(0.0));
+
+	float quotient = (switchVal[0] * z[2] - b[0] * (switchVal[0] + z[2]) + b[1]) /
+	                 ((z[2] - switchVal[1]) * (z[0] - z[1]));
+
+	float shadowIntensity = switchVal[2] + switchVal[3] * quotient;
+	return clamp(1.0 - shadowIntensity, 0.0, 1.0);
+}
+
+// atlasRegion: xy = the caster's tile offset in atlas UV, zw = its tile scale.
+// The bounds check below must run in tile-local [0,1] space, before the remap.
+float sampleShadow(vec3 worldPos, mat4 lightSpaceMatrix, vec4 atlasRegion) {
     vec4 shadowClip = lightSpaceMatrix * vec4(worldPos, 1.0);
     vec3 shadowNDC  = shadowClip.xyz / shadowClip.w;
     vec2 shadowUV   = shadowNDC.xy * 0.5 + 0.5;
@@ -227,11 +293,42 @@ float sampleShadow(vec3 worldPos, mat4 lightSpaceMatrix) {
         return 1.0; // outside the caster's frustum - unshadowed
     }
 
-    float shadowDepth  = texture(u_shadowMap, shadowUV).r;
-    float currentDepth = shadowNDC.z;
-    const float bias = 0.002;
+	vec2 atlasUV = atlasRegion.xy + shadowUV * atlasRegion.zw;
 
-    return (currentDepth - bias > shadowDepth) ? 0.0 : 1.0;
+	vec4 moments = texture(u_shadowMap, atlasUV);
+	return momentShadow4MSM(moments, shadowNDC.z);
+}
+
+// -------------------------------------------------------
+// Cascade Shadow Mapping
+// -------------------------------------------------------
+layout(set = 1, binding = 11) uniform CascadeData {
+    mat4 cascadeMatrices[3];
+    vec4 splitDepths;          // xyz = view-space split-far distances, w unused
+    uint hasDirectionalShadow;
+} u_cascades;
+
+layout(set = 1, binding = 12) uniform sampler2D u_cascadeShadowMap0;
+layout(set = 1, binding = 13) uniform sampler2D u_cascadeShadowMap1;
+layout(set = 1, binding = 14) uniform sampler2D u_cascadeShadowMap2;
+
+float sampleCascade(int index, vec3 worldPos) {
+    mat4 vp = u_cascades.cascadeMatrices[index];
+    vec4 shadowClip = vp * vec4(worldPos, 1.0);
+    vec3 shadowNDC  = shadowClip.xyz / shadowClip.w;
+    vec2 shadowUV   = shadowNDC.xy * 0.5 + 0.5;
+
+    if (shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
+        shadowUV.y < 0.0 || shadowUV.y > 1.0 || shadowNDC.z > 1.0) {
+        return 1.0;
+    }
+
+    vec4 moments;
+    if (index == 0)      moments = texture(u_cascadeShadowMap0, shadowUV);
+    else if (index == 1) moments = texture(u_cascadeShadowMap1, shadowUV);
+    else                 moments = texture(u_cascadeShadowMap2, shadowUV);
+
+    return momentShadow4MSM(moments, shadowNDC.z);
 }
 
 void main() {
@@ -278,12 +375,27 @@ void main() {
                         * light.colorAndIntensity.w;
 
         if (light.type == 0u) {
-            // Directional - no attenuation, direction stored in positionAndRadius.xyz
             vec3 L = normalize(-light.positionAndRadius.xyz);
-            directLight += evaluateBRDF(ws_normal, V, L,
-                                        baseColor, metallic, roughness)
-                        * lightColor;
 
+            float shadow = 1.0;
+            if (u_cascades.hasDirectionalShadow == 1u) {
+                float viewDepth = (u_frame.view * vec4(ws_position, 1.0)).z;
+                float cascadeDistance = -viewDepth;  // camera looks down -Z in view space
+
+                // Beyond the shadow distance entirely - no cascade covers it, stays
+                // unshadowed rather than clamping into cascade 2's stretched-thin
+                // far edge.
+                if (cascadeDistance <= u_cascades.splitDepths.z) {
+                    int cascadeIndex = 2;
+                    if (cascadeDistance < u_cascades.splitDepths.x) cascadeIndex = 0;
+                    else if (cascadeDistance < u_cascades.splitDepths.y) cascadeIndex = 1;
+
+                    shadow = sampleCascade(cascadeIndex, ws_position);
+                }
+            }
+
+            directLight += evaluateBRDF(ws_normal, V, L, baseColor, metallic, roughness)
+                        * lightColor * shadow;
         } else if (light.type == 1u) {
             // Point - inverse square attenuation
             vec3  toLight = light.positionAndRadius.xyz - ws_position;
@@ -321,7 +433,8 @@ void main() {
                 float spotFalloff = smoothstep(cosOuter, cosInner, cosAngle);
 
                 float shadow = (light.castsShadow == 1u)
-                    ? sampleShadow(ws_position, light.lightSpaceMatrix)
+                    ? sampleShadow(ws_position, light.lightSpaceMatrix,
+                                   light.shadowAtlasRegion)
                     : 1.0;
 
                 directLight += evaluateBRDF(ws_normal, V, L,
@@ -356,5 +469,5 @@ void main() {
     // Final HDR output
     // -------------------------------------------------------
     vec3 hdrColor = directLight + ambient + emissiveContrib;
-    out_hdrColor  = vec4(hdrColor, 1.0);
+    o_hdrColor  = vec4(hdrColor, 1.0);
 }

@@ -38,6 +38,14 @@ void LightSystem::update(World& world) {
 		const Transform& transform = world.getComponent<Transform>(entity);
 		const Light& light = world.getComponent<Light>(entity);
 
+		// castsShadow / lightSpaceMatrix / shadowAtlasRegion are left zeroed
+		// here on purpose. ShadowSystem::update() is the sole thing that opts
+		// a light in, and it only does so for lights it actually assigned an
+		// atlas slot - the Light component's castsShadow flag is a request,
+		// not a guarantee. Setting it from the flag here would let a light the
+		// atlas skipped reach the shader with castsShadow == 1 and a zeroed
+		// shadowAtlasRegion, whose zero scale collapses every lookup onto a
+		// single texel.
 		GPULight gpu{};
 		gpu.colorAndIntensity = glm::vec4(light.color, light.intensity);
 		gpu.type = static_cast<uint32_t>(light.type);
@@ -66,7 +74,6 @@ void LightSystem::update(World& world) {
 				gpu.directionAndCosOuter =
 				    glm::vec4(dir, std::cos(glm::radians(light.outerAngle)));
 				gpu.cosInner = std::cos(glm::radians(light.innerAngle));
-				gpu.castsShadow = light.castsShadow ? 1 : 0;
 				break;
 			}
 		}

@@ -10,7 +10,7 @@ struct RenderTargetDesc {
 	VkFormat format;
 	VkImageUsageFlags usage;
 	VkImageAspectFlags aspect;
-	std::string_view debugName;
+	std::string debugName;
 };
 
 class RenderTarget {

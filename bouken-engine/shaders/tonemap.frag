@@ -13,14 +13,14 @@ layout(set = 0, binding = 0) uniform sampler2D u_hdrBuffer;
 // -------------------------------------------------------
 // Output - LDR color for presentation
 // -------------------------------------------------------
-layout(location = 0) out vec4 out_color;
+layout(location = 0) out vec4 o_color;
 
 // -------------------------------------------------------
 // Constants
 // -------------------------------------------------------
 const float GAMMA     = 2.2;
 const float INV_GAMMA = 1.0 / GAMMA;
-const float EXPOSURE  = 1.0; // TODO: wire to camera exposure UBO
+const float EXPOSURE  = 0.5; // TODO: wire to camera exposure UBO
 
 // -------------------------------------------------------
 // ACES filmic tonemapper
@@ -64,5 +64,5 @@ void main() {
     // Gamma correct for display
     vec3 displayColor = linearToSRGB(ldrColor);
 
-    out_color = vec4(displayColor, 1.0);
+    o_color = vec4(displayColor, 1.0);
 }

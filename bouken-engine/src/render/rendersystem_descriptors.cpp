@@ -27,7 +27,7 @@ void RenderSystem::createDescriptorSetLayouts() {
 	}
 
 	// Set 1a - lighting pass: 5 G-buffer samplers + depth + light SSBO + IBL
-	std::array<VkDescriptorSetLayoutBinding, 11> lightingBindings{};
+	std::array<VkDescriptorSetLayoutBinding, 15> lightingBindings{};
 
 	// Binding 0..4: G-buffer samplers
 	for (uint32_t i = 0; i < 5; i++) {
@@ -78,6 +78,21 @@ void RenderSystem::createDescriptorSetLayouts() {
 	lightingBindings[10].descriptorCount = 1;
 	lightingBindings[10].stageFlags =
 	    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 11: cascade shadow data UBO
+	lightingBindings[11].binding = 11;
+	lightingBindings[11].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	lightingBindings[11].descriptorCount = 1;
+	lightingBindings[11].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 12-14: cascade shadow maps
+	for (uint32_t i = 0; i < 3; i++) {
+		lightingBindings[12 + i].binding = 12 + i;
+		lightingBindings[12 + i].descriptorType =
+		    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		lightingBindings[12 + i].descriptorCount = 1;
+		lightingBindings[12 + i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	}
 
 	VkDescriptorSetLayoutCreateInfo lightingLayoutInfo{};
 	lightingLayoutInfo.sType =
@@ -171,15 +186,15 @@ void RenderSystem::createDescriptorPool() {
 
 	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
-	// UBOs: per swapchain image + per material + SH coefficients
+	// UBOs: per swapchain image + per material + SH coefficients + cascade data
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[0].descriptorCount = swapImageCount + MAX_MATERIALS + 1;
+	poolSizes[0].descriptorCount = swapImageCount + MAX_MATERIALS + 1 + 1;
 
-	// Combined image samplers: lighting(6) + shadows(1) +
+	// Combined image samplers: lighting(6) + shadows(1) + cascades(3) +
 	// tonemap(1) + materials(6 * max)
 	//  + IBL(prefiltered environment map + BRDF LUT + environment cubemap)
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount = 6 + 1 + (6 * MAX_MATERIALS) + 3;
+	poolSizes[1].descriptorCount = 6 + 1 + 3 + (6 * MAX_MATERIALS) + 3;
 
 	// SSBOs: lighting, then cluster lighting (TODO)
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -318,16 +333,28 @@ void RenderSystem::createLightingDescriptorSet() {
 	                 m_shadowSystem.getShadowMapView(),
 	                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 
+	std::array<VkDescriptorImageInfo, 3> cascadeImageInfos{};
+	for (uint32_t i = 0; i < 3; i++) {
+		cascadeImageInfos[i] = {m_shadowSystem.getShadowSampler(),
+		                        m_shadowSystem.getCascadeResolvedView(i),
+		                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+	}
+
 	VkDescriptorBufferInfo lightBufferInfo{};
 	lightBufferInfo.buffer = m_lightSystem.getBuffer();
 	lightBufferInfo.offset = 0;
 	lightBufferInfo.range = m_lightSystem.getBufferSize();
 
-	// IBL bindings (6-9) are written separately by updateIBLDescriptors(),
+	VkDescriptorBufferInfo cascadeBufferInfo{};
+	cascadeBufferInfo.buffer = m_shadowSystem.getCascadeUBO();
+	cascadeBufferInfo.offset = 0;
+	cascadeBufferInfo.range = sizeof(CascadeUBOData);
+
+	// IBL bindings (7-10) are written separately by updateIBLDescriptors(),
 	// called after IBLSystem::loadEnvironment() succeeds - the views/buffer
 	// backing them don't exist yet at this point in initialization.
 
-	std::array<VkWriteDescriptorSet, 7> writes{};
+	std::array<VkWriteDescriptorSet, 11> writes{};
 	for (uint32_t i = 0; i < 5; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = m_lightingSet;
@@ -353,6 +380,25 @@ void RenderSystem::createLightingDescriptorSet() {
 	writes[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	writes[6].descriptorCount = 1;
 	writes[6].pImageInfo = &imageInfos[5];
+
+	writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writes[7].dstSet = m_lightingSet;
+	writes[7].dstBinding = 11;
+	writes[7].dstArrayElement = 0;
+	writes[7].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[7].descriptorCount = 1;
+	writes[7].pBufferInfo = &cascadeBufferInfo;
+
+	for (uint32_t i = 0; i < 3; i++) {
+		writes[8 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[8 + i].dstSet = m_lightingSet;
+		writes[8 + i].dstBinding = 12 + i;
+		writes[8 + i].dstArrayElement = 0;
+		writes[8 + i].descriptorType =
+		    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[8 + i].descriptorCount = 1;
+		writes[8 + i].pImageInfo = &cascadeImageInfos[i];
+	}
 
 	vkUpdateDescriptorSets(m_context.getDevice(),
 	                       static_cast<uint32_t>(writes.size()), writes.data(),

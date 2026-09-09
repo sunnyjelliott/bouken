@@ -155,7 +155,9 @@ void RenderSystem::drawFrame(SwapChain& swapChain, World& world,
 	vkResetFences(m_context.getDevice(), 1, &m_inFlightFence);
 
 	m_lightSystem.update(world);
-	m_shadowSystem.update(world, m_lightSystem);
+	const VkExtent2D extent = m_swapChain.getExtent();
+	const float aspect = static_cast<float>(extent.width) / extent.height;
+	m_shadowSystem.update(world, m_lightSystem, cameraSystem, aspect);
 
 	uint32_t imageIndex;
 	vkAcquireNextImageKHR(m_context.getDevice(), swapChain.getSwapChain(),
