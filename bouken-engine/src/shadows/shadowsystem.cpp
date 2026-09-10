@@ -1,5 +1,6 @@
 #include "shadows/shadowsystem.h"
 
+#include "boundingbox.h"
 #include "light.h"
 #include "lighting/lightsystem.h"
 #include "render/rendersystem.h"
@@ -100,8 +101,56 @@ void ShadowSystem::cleanup() {
 // path (updateCascades, and the matching record step) hooks in here.
 // -------------------------------------------------------
 
+void ShadowSystem::collectCasters(World& world,
+                                  const RenderSystem& renderSystem) {
+	m_casters.clear();
+	m_sceneBounds = AABB{};
+
+	// Iterating the pool's own entity array, not world.view<>(): View scans
+	// the entire 0..MAX_ENTITIES handle range with a type_index hash lookup
+	// plus a per-pool hash lookup for every component at every step, so its
+	// cost is fixed at ~65k * N lookups no matter how small the scene is.
+	// Every shadow pass used to pay that separately - three cascade fits,
+	// three cascade record loops, and one record loop per spot tile.
+	// TransformSystem::update sets the precedent for going pool-first.
+	const ComponentPool<MeshRenderer>* pool =
+	    world.getComponentPool<MeshRenderer>();
+	if (!pool) return;
+
+	const std::vector<Entity>& entities = pool->getEntities();
+	const std::vector<MeshRenderer>& renderers = pool->getComponents();
+
+	for (size_t i = 0; i < entities.size(); i++) {
+		const Entity entity = entities[i];
+		const MeshRenderer& meshRenderer = renderers[i];
+
+		if (!meshRenderer.visible) continue;
+		if (!world.hasComponent<Transform>(entity)) continue;
+		if (!world.hasComponent<BoundingBox>(entity)) continue;
+
+		const AABB& bounds = world.getComponent<BoundingBox>(entity).aabb;
+		if (!bounds.isValid()) continue;
+
+		const glm::mat4& worldMatrix =
+		    world.getComponent<Transform>(entity).worldMatrix;
+
+		for (uint32_t meshID : meshRenderer.getMeshIDs()) {
+			const RenderSystem::MeshInfo* mesh = renderSystem.getMeshInfo(meshID);
+			if (!mesh) continue;
+
+			m_casters.push_back({worldMatrix, bounds, mesh->indexCount,
+			                     mesh->firstIndex, mesh->firstVertex});
+		}
+
+		m_sceneBounds = AABB::merge(m_sceneBounds, bounds);
+	}
+}
+
 void ShadowSystem::update(World& world, LightSystem& lightSystem,
-                          const CameraSystem& cameraSystem, float aspectRatio) {
+                          const CameraSystem& cameraSystem, float aspectRatio,
+                          const RenderSystem& renderSystem) {
+	collectCasters(world, renderSystem);
+
 	m_activeCasters.clear();
 
 	const glm::vec3 cameraPos =
@@ -168,6 +217,8 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 		    world.getComponent<Transform>(assignment.entity);
 		const Light& light = world.getComponent<Light>(assignment.entity);
 		assignment.matrices = computeSpotLightSpaceMatrix(transform, light);
+		assignment.frustum =
+		    Frustum::fromViewProjection(assignment.matrices.viewProjection);
 
 		lights[index].castsShadow = 1;
 		lights[index].lightSpaceMatrix = assignment.matrices.viewProjection;
@@ -177,7 +228,26 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 	updateCascades(world, cameraSystem, aspectRatio);
 }
 
-void ShadowSystem::render(VkCommandBuffer commandBuffer, World& world,
+// Shared by both record paths: push the caster's matrices and emit its draw.
+static void recordCaster(VkCommandBuffer cmd, VkPipelineLayout layout,
+                         const ShadowCaster& caster, const glm::mat4& view,
+                         const glm::mat4& projection) {
+	struct {
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 projection;
+	} push;
+	push.model = caster.worldMatrix;
+	push.view = view;
+	push.projection = projection;
+
+	vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push),
+	                   &push);
+	vkCmdDrawIndexed(cmd, caster.indexCount, 1, caster.firstIndex,
+	                 caster.firstVertex, 0);
+}
+
+void ShadowSystem::render(VkCommandBuffer commandBuffer,
                           RenderSystem& renderSystem) {
 	// Both paths are independently optional: a scene can have spot casters,
 	// a directional caster, both, or neither.
@@ -194,6 +264,15 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer, World& world,
 	clearValues[0].color = {1.0f, 0.99756f, 0.89344f, 0.0f};
 	clearValues[1].depthStencil = {1.0f, 0};
 
+	// Bound once for every pass below - vertex and index bindings are not
+	// invalidated by render pass boundaries, and every shadow draw sources
+	// the same two buffers.
+	VkBuffer vertexBuffers[] = {renderSystem.getVertexBuffer()};
+	VkDeviceSize offsets[] = {0};
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+	vkCmdBindIndexBuffer(commandBuffer, renderSystem.getIndexBuffer(), 0,
+	                     VK_INDEX_TYPE_UINT32);
+
 	if (!m_activeCasters.empty()) {
 		VkRenderPassBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -207,12 +286,6 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer, World& world,
 		                     VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		                  m_pipeline);
-
-		VkBuffer vertexBuffers[] = {renderSystem.getVertexBuffer()};
-		VkDeviceSize offsets[] = {0};
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, renderSystem.getIndexBuffer(), 0,
-		                     VK_INDEX_TYPE_UINT32);
 
 		for (const ShadowSlotAssignment& assignment : m_activeCasters) {
 			const ShadowTier& tier = m_tiers[assignment.tier];
@@ -233,34 +306,12 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer, World& world,
 			    {tier.resolution, tier.resolution}};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-			for (Entity entity : world.view<Transform, MeshRenderer>()) {
-				const Transform& transform =
-				    world.getComponent<Transform>(entity);
-				const MeshRenderer& meshRenderer =
-				    world.getComponent<MeshRenderer>(entity);
-				if (!meshRenderer.visible) continue;
+			for (const ShadowCaster& caster : m_casters) {
+				if (!assignment.frustum.intersects(caster.bounds)) continue;
 
-				for (uint32_t meshID : meshRenderer.getMeshIDs()) {
-					const RenderSystem::MeshInfo* mesh =
-					    renderSystem.getMeshInfo(meshID);
-					if (!mesh) continue;
-
-					struct {
-						glm::mat4 model;
-						glm::mat4 view;
-						glm::mat4 projection;
-					} push;
-					push.model = transform.worldMatrix;
-					push.view = assignment.matrices.view;
-					push.projection = assignment.matrices.projection;
-
-					vkCmdPushConstants(commandBuffer, m_pipelineLayout,
-					                   VK_SHADER_STAGE_VERTEX_BIT, 0,
-					                   sizeof(push), &push);
-
-					vkCmdDrawIndexed(commandBuffer, mesh->indexCount, 1,
-					                 mesh->firstIndex, mesh->firstVertex, 0);
-				}
+				recordCaster(commandBuffer, m_pipelineLayout, caster,
+				             assignment.matrices.view,
+				             assignment.matrices.projection);
 			}
 		}
 
@@ -295,40 +346,16 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer, World& world,
 			VkRect2D scissor{{0, 0}, {CASCADE_RESOLUTION, CASCADE_RESOLUTION}};
 			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-			VkBuffer vertexBuffers[] = {renderSystem.getVertexBuffer()};
-			VkDeviceSize offsets[] = {0};
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffer, renderSystem.getIndexBuffer(),
-			                     0, VK_INDEX_TYPE_UINT32);
+			// The per-cascade cull that makes the three maps actually differ.
+			// m_cascadeFrusta[i] is the cascade's own ortho volume, already
+			// extended toward the light, so this rejects both geometry
+			// outside the slice and geometry that can't reach it.
+			for (const ShadowCaster& caster : m_casters) {
+				if (!m_cascadeFrusta[i].intersects(caster.bounds)) continue;
 
-			for (Entity entity : world.view<Transform, MeshRenderer>()) {
-				const Transform& transform =
-				    world.getComponent<Transform>(entity);
-				const MeshRenderer& meshRenderer =
-				    world.getComponent<MeshRenderer>(entity);
-				if (!meshRenderer.visible) continue;
-
-				for (uint32_t meshID : meshRenderer.getMeshIDs()) {
-					const RenderSystem::MeshInfo* mesh =
-					    renderSystem.getMeshInfo(meshID);
-					if (!mesh) continue;
-
-					struct {
-						glm::mat4 model;
-						glm::mat4 view;
-						glm::mat4 projection;
-					} push;
-					push.model = transform.worldMatrix;
-					push.view = m_cascadeMatrices[i].view;
-					push.projection = m_cascadeMatrices[i].projection;
-
-					vkCmdPushConstants(commandBuffer, m_pipelineLayout,
-					                   VK_SHADER_STAGE_VERTEX_BIT, 0,
-					                   sizeof(push), &push);
-
-					vkCmdDrawIndexed(commandBuffer, mesh->indexCount, 1,
-					                 mesh->firstIndex, mesh->firstVertex, 0);
-				}
+				recordCaster(commandBuffer, m_pipelineLayout, caster,
+				             m_cascadeMatrices[i].view,
+				             m_cascadeMatrices[i].projection);
 			}
 
 			vkCmdEndRenderPass(commandBuffer);

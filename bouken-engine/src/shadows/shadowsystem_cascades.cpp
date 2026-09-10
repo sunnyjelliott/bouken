@@ -215,23 +215,26 @@ std::array<glm::vec3, 8> ShadowSystem::computeFrustumCornersWorldSpace(
 }
 
 LightSpaceMatrices ShadowSystem::computeCascadeViewProjection(
-    const std::array<glm::vec3, 8>& corners, const glm::vec3& lightDirection,
-    uint32_t resolution) const {
+    const std::array<glm::vec3, 8>& corners, const AABB& sceneBounds,
+    const glm::vec3& lightDirection, uint32_t resolution) const {
 	glm::vec3 center(0.0f);
 	for (const glm::vec3& c : corners) center += c;
 	center /= 8.0f;
 
-	// Fixed radius (bounding sphere of the corners, not a tight AABB) so the
-	// ortho extent stays stable as the camera rotates - only translation
-	// needs the texel snap below; a tight per-frame AABB would also change
-	// size with rotation, defeating the snap.
+	// XY extent is the bounding sphere of the slice corners, not a tight
+	// AABB: a sphere's radius doesn't change as the camera rotates, so
+	// world-units-per-texel is fixed and the snap below actually stabilizes
+	// the map. A tight per-frame fit would change size every frame and the
+	// snap would quantize against a moving grid - which is what the previous
+	// occluder-AABB-union fit did.
 	float radius = 0.0f;
 	for (const glm::vec3& c : corners) {
 		radius = glm::max(radius, glm::length(c - center));
 	}
-	radius =
-	    glm::ceil(radius * 16.0f) / 16.0f;  // coarse rounding, further
-	                                        // damps size jitter frame-to-frame
+	radius = glm::ceil(radius * 16.0f) / 16.0f;  // coarse rounding, further
+	                                             // damps size jitter
+	radius = glm::max(radius, 1e-4f);  // a degenerate slice would otherwise
+	                                   // divide by zero in the snap below
 
 	glm::vec3 up = (glm::abs(lightDirection.y) > 0.99f)
 	                   ? glm::vec3(0.0f, 0.0f, 1.0f)
@@ -241,8 +244,7 @@ LightSpaceMatrices ShadowSystem::computeCascadeViewProjection(
 
 	// Texel snapping: with a fixed radius, world-units-per-texel is fixed
 	// too, so quantizing the center to that grid makes the ortho frustum
-	// shift in whole-texel steps only - eliminates the sub-texel shimmer a
-	// naive per-frame recompute would produce as the camera moves.
+	// shift in whole-texel steps only.
 	float worldUnitsPerTexel = (radius * 2.0f) / static_cast<float>(resolution);
 	glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(center, 1.0f));
 	centerLS.x =
@@ -255,8 +257,40 @@ LightSpaceMatrices ShadowSystem::computeCascadeViewProjection(
 	lightView = glm::lookAt(snappedCenter - lightDirection * radius * 2.0f,
 	                        snappedCenter, up);
 
+	// Depth range. lookAt looks down -Z, so a light-space distance from the
+	// eye is -z, and the slice sphere spans [radius, radius * 3].
+	//
+	// The near plane is then pulled back to whatever the furthest scene
+	// geometry toward the light is. This is the fix for the clipped shadows:
+	// an occluder up-sun of the slice still shadows into it, and with a near
+	// plane sitting at the sphere's own tangent plane it was being clipped
+	// away. A negative zNear is fine here - unlike perspective, an ortho
+	// volume may extend behind its own eye.
+	//
+	// Only the near side is extended. Receivers only exist inside the slice,
+	// so the far plane stays at the sphere, which keeps the depth range to
+	// (scene depth along the light) rather than (whole scene diagonal). At
+	// Sponza's scale that costs a few bits of moment precision on cascade 0;
+	// if it ever shows up as MSM light bleed, the tighter bound is the
+	// light-space depth of only those casters whose XY overlaps this
+	// cascade's box, which m_casters is already the right list to compute.
+	//
+	// It also makes the resulting ortho volume exactly the right thing to
+	// cull against: one 6-plane test answers both "is this inside the
+	// cascade" and "could this cast into the cascade".
+	float zNear = radius;
+	float zFar = radius * 3.0f;
+
+	for (uint32_t i = 0; i < 8; i++) {
+		glm::vec3 corner((i & 1) ? sceneBounds.max.x : sceneBounds.min.x,
+		                 (i & 2) ? sceneBounds.max.y : sceneBounds.min.y,
+		                 (i & 4) ? sceneBounds.max.z : sceneBounds.min.z);
+		float dist = -(lightView * glm::vec4(corner, 1.0f)).z;
+		zNear = glm::min(zNear, dist);
+	}
+
 	glm::mat4 proj =
-	    glm::ortho(-radius, radius, -radius, radius, 0.0f, radius * 4.0f);
+	    glm::ortho(-radius, radius, -radius, radius, zNear, zFar);
 	proj[1][1] *= -1.0f;
 
 	return {lightView, proj, proj * lightView};
@@ -285,6 +319,12 @@ void ShadowSystem::updateCascades(World& world,
 		m_directionalCaster = NULL_ENTITY;
 	}
 
+	// No geometry at all means nothing to fit the cascades to - m_sceneBounds
+	// would be the inverted sentinel AABB and would poison the near plane.
+	if (!m_sceneBounds.isValid()) {
+		m_directionalCaster = NULL_ENTITY;
+	}
+
 	CascadeUBOData uboData{};
 
 	if (m_directionalCaster != NULL_ENTITY) {
@@ -306,10 +346,12 @@ void ShadowSystem::updateCascades(World& world,
 			    cameraView, fovRadians, aspectRatio, splits[i], splits[i + 1]);
 
 			m_cascadeMatrices[i] = computeCascadeViewProjection(
-			    corners, lightDirection, CASCADE_RESOLUTION);
-			m_cascadeData[i].viewProjection =
-			    m_cascadeMatrices[i].viewProjection;
-			m_cascadeData[i].splitDepth = splits[i + 1];
+			    corners, m_sceneBounds, lightDirection, CASCADE_RESOLUTION);
+
+			// The ortho volume is the cull volume - it already reaches back
+			// toward the light far enough to cover off-slice occluders.
+			m_cascadeFrusta[i] = Frustum::fromViewProjection(
+			    m_cascadeMatrices[i].viewProjection);
 
 			uboData.cascadeMatrices[i] = m_cascadeMatrices[i].viewProjection;
 		}

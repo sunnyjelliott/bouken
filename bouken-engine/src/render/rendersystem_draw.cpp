@@ -26,7 +26,7 @@ void RenderSystem::recordCommandBuffer(VkCommandBuffer commandBuffer,
 	updateFrameUBO(imageIndex, swapChain, view, projection, cameraPos);
 
 	m_shadowSystem.render(
-	    commandBuffer, world,
+	    commandBuffer,
 	    *this);  // independent target, no dependency on main passes
 	recordDepthPrepass(commandBuffer, view, projection, extent);
 	recordGeometryPass(commandBuffer, view, projection, extent,

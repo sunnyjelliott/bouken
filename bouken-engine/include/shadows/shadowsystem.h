@@ -1,4 +1,5 @@
 #pragma once
+#include "frustum.h"
 #include "pch.h"
 
 #include "camerasystem.h"
@@ -48,6 +49,24 @@ struct ShadowSlotAssignment {
 	uint32_t slot = 0;
 	glm::vec4 atlasRegion;  // xy = uv offset, zw = uv scale
 	LightSpaceMatrices matrices;
+	Frustum frustum;  // matrices.viewProjection, for draw-time caster culling
+};
+
+// ---------------------------------------------------------------------------
+// Per-frame caster list
+//
+// One entry per submesh, gathered once in update() and reused by every shadow
+// pass that frame - the spot atlas tiles and all three cascades. Draw
+// arguments are resolved at collect time so the record loops never touch the
+// ECS or RenderSystem's mesh map.
+// ---------------------------------------------------------------------------
+
+struct ShadowCaster {
+	glm::mat4 worldMatrix;
+	AABB bounds;  // world space - what the per-pass frustum test uses
+	uint32_t indexCount = 0;
+	uint32_t firstIndex = 0;
+	uint32_t firstVertex = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -58,11 +77,6 @@ static constexpr uint32_t CASCADE_COUNT = 3;
 static constexpr uint32_t CASCADE_RESOLUTION = 2048;
 static constexpr float CASCADE_SHADOW_DISTANCE = 50.0f;
 static constexpr float CASCADE_SPLIT_LAMBDA = 0.6f;
-
-struct CascadeData {
-	glm::mat4 viewProjection;
-	float splitDepth;
-};
 
 struct CascadeTarget {
 	RenderTarget moments;
@@ -98,12 +112,17 @@ class ShadowSystem {
 	// Computes the light-space matrix for the current shadow caster and
 	// patches it into LightSystem's GPULight buffer. Must run after
 	// LightSystem::update() in the same frame.
+	//
+	// Also gathers the frame's caster list, which is why RenderSystem is
+	// needed here - draw arguments are resolved once, at collect time.
 	void update(World& world, LightSystem& lightSystem,
-	            const CameraSystem& cameraSystem, float aspectRatio);
+	            const CameraSystem& cameraSystem, float aspectRatio,
+	            const RenderSystem& renderSystem);
 
 	// Records the depth-only shadow pass. Called by RenderSystem as part of
-	// its own command buffer recording.
-	void render(VkCommandBuffer cmd, World& world, RenderSystem& renderSystem);
+	// its own command buffer recording. Takes no World: everything it draws
+	// came out of the caster list update() already gathered.
+	void render(VkCommandBuffer cmd, RenderSystem& renderSystem);
 
 	// Accessors
 	VkImageView getShadowMapView() const {
@@ -118,6 +137,14 @@ class ShadowSystem {
 	}
 
    private:
+	// Per-frame caster gather - shadowsystem.cpp
+	//
+	// Iterates the MeshRenderer pool directly rather than world.view<>():
+	// View walks the whole 0..MAX_ENTITIES handle range with a hash lookup
+	// per component per step, so it costs the same on a 20-entity scene as a
+	// 60000-entity one. TransformSystem::update sets the same precedent.
+	void collectCasters(World& world, const RenderSystem& renderSystem);
+
 	// Shared GPU objects - shadowsystem_resources.cpp
 	void createRenderPass();
 	void createBlurRenderPass();
@@ -162,7 +189,7 @@ class ShadowSystem {
 	    const glm::mat4& cameraView, float fovRadians, float aspect,
 	    float splitNear, float splitFar) const;
 	LightSpaceMatrices computeCascadeViewProjection(
-	    const std::array<glm::vec3, 8>& corners,
+	    const std::array<glm::vec3, 8>& corners, const AABB& sceneBounds,
 	    const glm::vec3& lightDirection, uint32_t resolution) const;
 	void updateCascades(World& world, const CameraSystem& cameraSystem,
 	                    float aspectRatio);
@@ -170,6 +197,11 @@ class ShadowSystem {
 
 	// Shared state
 	VulkanContext* m_context = nullptr;
+
+	// Rebuilt every frame by collectCasters(); consumed by both shadow paths.
+	std::vector<ShadowCaster> m_casters;
+	AABB m_sceneBounds;  // union of m_casters bounds - feeds the cascade
+	                     // near-plane pull-back
 
 	VkRenderPass m_renderPass = VK_NULL_HANDLE;
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
@@ -209,10 +241,14 @@ class ShadowSystem {
 
 	// Directional cascade state
 	std::array<CascadeTarget, CASCADE_COUNT> m_cascades;
-	std::array<CascadeData, CASCADE_COUNT> m_cascadeData;
 	Entity m_directionalCaster = NULL_ENTITY;
 	std::array<LightSpaceMatrices, CASCADE_COUNT>
 	    m_cascadeMatrices;  // for render()'s push constants
+
+	// Ortho volume of each cascade, for draw-time culling. Already extended
+	// toward the light by computeCascadeViewProjection's near-plane pull-back,
+	// so a plain 6-plane test also catches off-slice occluders.
+	std::array<Frustum, CASCADE_COUNT> m_cascadeFrusta;
 
 	VkBuffer m_cascadeUBO = VK_NULL_HANDLE;
 	VmaAllocation m_cascadeUBOAllocation = VK_NULL_HANDLE;

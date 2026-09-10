@@ -12,6 +12,7 @@ vcpkg/
 *.ilk
 *.spv
 bouken-engine/assets/models/
+bouken-engine/*.md
 ROADMAP.md
 COMPLETED_WORK.md
 HARD_WON_LESSONS.md
