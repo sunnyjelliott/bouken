@@ -18,6 +18,16 @@ struct GPULight {
 	float _pad;
 	glm::mat4 lightSpaceMatrix;
 	glm::vec4 shadowAtlasRegion;
+
+	// DualParaboloid (point) only - dead weight on every other light type.
+	// Slated for replacement by a generalized, type-tagged shadow-data block
+	// in "Shadows Pt. 2" rather than parallel per-representation fields.
+	glm::mat4 dpsmView;
+	glm::vec4 dpsmAtlasRegionFront;
+	glm::vec4 dpsmAtlasRegionBack;
+	float dpsmNear;
+	float dpsmFar;
+	float _dpsmPad[2];
 };
 
 class LightSystem {

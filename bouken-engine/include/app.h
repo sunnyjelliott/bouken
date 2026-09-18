@@ -1,4 +1,5 @@
 #pragma once
+#include "boundssystem.h"
 #include "camerasystem.h"
 #include "glfwinputbackend.h"
 #include "lighting/iblsystem.h"
@@ -36,6 +37,7 @@ class Application {
 	RenderSystem m_renderSystem;
 
 	TransformSystem m_transformSystem;
+	BoundsSystem m_boundsSystem;
 	World m_world;
 	CameraSystem m_cameraSystem;
 	Entity m_activeCamera;

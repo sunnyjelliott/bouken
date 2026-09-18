@@ -121,15 +121,12 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 			                     vertices, indices);
 			    applyWorldTransform(vertices, item.worldMat);
 
-			    AABB aabb;
-			    for (const Vertex& v : vertices) {
-				    aabb.min = glm::min(aabb.min, v.position);
-				    aabb.max = glm::max(aabb.max, v.position);
-			    }
-
-			    return ProcessedMesh{
-			        std::move(vertices), std::move(indices), aabb,
-			        item.entity,         item.parentEntity,  item.materialID};
+			    // No AABB fit here - uploadMesh already computes one on
+			    // the serial pass below, and m_meshAABBs is the single
+			    // source of truth for mesh bounds.
+			    return ProcessedMesh{std::move(vertices),
+			                         std::move(indices), item.entity,
+			                         item.parentEntity, item.materialID};
 		    },
 		    std::move(item)  // move into the lambda - avoids copying VtArrays
 		    ));
@@ -141,6 +138,7 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 
 		uint32_t meshID =
 		    renderSystem.uploadMesh(result.vertices, result.indices);
+		if (meshID == RenderSystem::INVALID_MESH_ID) continue;
 
 		MeshRenderer renderer;
 		renderer.meshID = meshID;
@@ -151,7 +149,13 @@ bool SceneLoader::loadUSD(const std::string& filepath, World& world,
 		world.addComponent(result.entity, binding);
 
 		BoundingBox bb;
-		bb.aabb = result.aabb;
+		// Union over every mesh the renderer references, so this stays
+		// correct the day MeshRenderer::meshIDs starts being populated.
+		bb.local = renderSystem.getMeshAABB(renderer.getMeshIDs());
+		// Vertices are world-baked and the Transform is identity, so
+		// local == world at load. BoundsSystem re-derives before frame 1.
+		bb.world = bb.local;
+
 		world.addComponent(result.entity, bb);
 	}
 

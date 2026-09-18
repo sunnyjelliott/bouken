@@ -13,6 +13,7 @@ Entity EntityManager::createEntity() {
 
 		// Initialize version to 0 for new index
 		m_versions.push_back(0);
+		m_alive.push_back(false);
 	} else {
 		// Reuse a recycled index
 		index = m_freeIndices.front();
@@ -20,6 +21,7 @@ Entity EntityManager::createEntity() {
 	}
 
 	uint16_t version = m_versions[index];
+	m_alive[index] = true;
 	m_aliveCount++;
 
 	return EntityUtil::createHandle(index, version);
@@ -42,6 +44,7 @@ void EntityManager::destroyEntity(Entity entity) {
 	m_versions[index]++;
 
 	// Add index to free list for reuse
+	m_alive[index] = false;
 	m_freeIndices.push(index);
 
 	m_aliveCount--;
@@ -57,5 +60,13 @@ bool EntityManager::isAlive(Entity entity) const {
 	}
 
 	// Check if version matches (not stale)
-	return m_versions[index] == version;
+	return m_versions[index] == version && m_alive[index];
+}
+
+bool EntityManager::isIndexAlive(uint16_t index) const {
+	return index < m_alive.size() && m_alive[index];
+}
+
+Entity EntityManager::getHandleAtIndex(uint16_t index) const {
+	return EntityUtil::createHandle(index, m_versions[index]);
 }

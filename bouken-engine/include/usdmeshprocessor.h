@@ -1,6 +1,5 @@
 #pragma once
 #include "pch.h"
-#include "spatial.h"
 #include "vertex.h"
 #include "world.h"
 
@@ -37,7 +36,6 @@ struct MeshWorkItem {
 struct ProcessedMesh {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
-	AABB aabb;
 	Entity entity;
 	Entity parentEntity;
 	uint32_t materialID;

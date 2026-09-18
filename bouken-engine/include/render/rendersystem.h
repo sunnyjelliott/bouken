@@ -19,6 +19,17 @@ class TextureManager;
 class LightSystem;
 class ShadowSystem;
 
+// Built-in meshes registered by RenderSystem::createMeshBuffers, in
+// registration order. SceneLoader maps USD primitive prims onto these, so the
+// two must agree - createMeshBuffers asserts that they do.
+enum class BuiltinMesh : uint32_t {
+	Cube = 0,
+	Sphere = 1,
+	Cone = 2,
+	Cylinder = 3,
+	Count = 4
+};
+
 struct RenderItem {
 	Entity entity;
 	uint32_t meshID;
@@ -29,6 +40,11 @@ struct RenderItem {
 
 class RenderSystem {
    public:
+	// Returned by uploadMesh when there is nothing to upload. Distinct from
+	// mesh 0, which is a real mesh (BuiltinMesh::Cube).
+	static constexpr uint32_t INVALID_MESH_ID =
+	    std::numeric_limits<uint32_t>::max();
+
 	explicit RenderSystem(VulkanContext& context, SwapChain& swapChain,
 	                      LightSystem& lightSystem, ShadowSystem& shadowSystem,
 	                      bouken::IBLSystem& iblSystem);
@@ -48,6 +64,11 @@ class RenderSystem {
 	void flushMeshUploads();
 
 	AABB getMeshAABB(uint32_t meshID) const;
+
+	// Union of the per-mesh local AABBs. Unknown IDs contribute nothing
+	// (merging with the sentinel is the identity), so an all-unknown set
+	// returns the invalid sentinel - callers must isValid()-check.
+	AABB getMeshAABB(const std::vector<uint32_t>& meshIDs) const;
 
 	void updateIBLDescriptors();
 	void createMaterialDescriptorSets(MaterialManager& materialManager,

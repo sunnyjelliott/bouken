@@ -4,13 +4,25 @@
 #include "sceneloader.h"
 #include "transform.h"
 
-static bool readUsdExtents(const UsdGeomMesh& mesh, glm::vec3& outMin,
-                           glm::vec3& outMax) {
-	VtArray<GfVec3f> extent;
-	if (!mesh.GetExtentAttr().Get(&extent) || extent.size() < 2) return false;
-	outMin = glm::vec3(extent[0][0], extent[0][1], extent[0][2]);
-	outMax = glm::vec3(extent[1][0], extent[1][1], extent[1][2]);
-	return true;
+// Decomposes a matrix into the TRS that Transform can represent. Shear and
+// mirroring are lost - the same limitation as extractUsdTransform's
+// GfMatrix4d::Factor path below.
+static void decomposeToTRS(const glm::mat4& m, Transform& out) {
+	out.position = glm::vec3(m[3]);
+
+	const glm::vec3 scale(glm::length(glm::vec3(m[0])),
+	                      glm::length(glm::vec3(m[1])),
+	                      glm::length(glm::vec3(m[2])));
+	out.scale = scale;
+
+	if (scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f) {
+		out.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		return;
+	}
+
+	out.rotation = glm::quat_cast(glm::mat3(glm::vec3(m[0]) / scale.x,
+	                                        glm::vec3(m[1]) / scale.y,
+	                                        glm::vec3(m[2]) / scale.z));
 }
 
 Entity SceneLoader::traverseUsdPrim(
@@ -117,18 +129,38 @@ Entity SceneLoader::traverseUsdPrim(
 				outWorkItems.push_back(std::move(item));
 			}
 		} else {
-			// Primitive geometry - inline fast-path, no work item needed
-			uint32_t meshID =
-			    createMeshFromUsdGeom(prim, renderSystem, worldMat);
-			MeshRenderer renderer;
-			renderer.meshID = meshID;
-			world.addComponent(entity, renderer);
-			world.addComponent(entity, MaterialBinding{});
+			// Primitive geometry - inline fast-path, no work item needed.
+			//
+			// Unlike UsdGeomMesh, these resolve to built-in LOCAL-space meshes
+			// shared by every prim that uses them, so worldMat cannot be baked
+			// into the vertices. This branch carries the placement on the
+			// entity's Transform instead. The entity is unparented, so after
+			// TransformSystem::update its worldMatrix == worldMat, and
+			// BoundsSystem derives the world box from the same matrix the
+			// shader uses.
+			const uint32_t meshID = builtinMeshForPrim(prim);
+			const AABB localAABB = renderSystem.getMeshAABB(meshID);
 
-			AABB localAABB = renderSystem.getMeshAABB(meshID);
-			BoundingBox bb;
-			bb.aabb = localAABB.transformed(worldMat);
-			world.addComponent(entity, bb);
+			if (meshID == RenderSystem::INVALID_MESH_ID ||
+			    !localAABB.isValid()) {
+				// No MeshRenderer and no BoundingBox: an invisible entity is
+				// better than one whose garbage bounds poison m_sceneBounds
+				// and, through it, the cascade near plane.
+				std::cerr << "  Unsupported primitive prim, skipped: "
+				          << prim.GetPath() << std::endl;
+			} else {
+				decomposeToTRS(worldMat, world.getComponent<Transform>(entity));
+
+				MeshRenderer renderer;
+				renderer.meshID = meshID;
+				world.addComponent(entity, renderer);
+				world.addComponent(entity, MaterialBinding{});
+
+				BoundingBox bb;
+				bb.local = localAABB;
+				bb.world = localAABB.transformed(worldMat);
+				world.addComponent(entity, bb);
+			}
 		}
 	}
 
@@ -185,67 +217,13 @@ bool SceneLoader::isUsdGeometry(const UsdPrim& prim) {
 	       prim.IsA<UsdGeomCylinder>();
 }
 
-uint32_t SceneLoader::createMeshFromUsdGeom(const UsdPrim& prim,
-                                            RenderSystem& renderSystem,
-                                            const glm::mat4& worldMat) {
-	if (prim.IsA<UsdGeomCube>()) return 0;
-	if (prim.IsA<UsdGeomSphere>()) return 1;
-	if (prim.IsA<UsdGeomCone>()) return 2;
-	if (prim.IsA<UsdGeomCylinder>()) return 3;
+uint32_t SceneLoader::builtinMeshForPrim(const UsdPrim& prim) {
+	if (prim.IsA<UsdGeomCube>()) return static_cast<uint32_t>(BuiltinMesh::Cube);
+	if (prim.IsA<UsdGeomSphere>())
+		return static_cast<uint32_t>(BuiltinMesh::Sphere);
+	if (prim.IsA<UsdGeomCone>()) return static_cast<uint32_t>(BuiltinMesh::Cone);
+	if (prim.IsA<UsdGeomCylinder>())
+		return static_cast<uint32_t>(BuiltinMesh::Cylinder);
 
-	if (!prim.IsA<UsdGeomMesh>()) {
-		std::cerr << "Prim is not a mesh: " << prim.GetPath() << std::endl;
-		return 0;
-	}
-
-	const UsdMeshData data = loadUsdMeshData(UsdGeomMesh(prim));
-
-	VtArray<int> faceIndices;
-	faceIndices.resize(data.faceVertexCounts.size());
-	for (size_t i = 0; i < faceIndices.size(); ++i) faceIndices[i] = (int)i;
-
-	// Generate tangents on original USD faces BEFORE triangulation
-	std::vector<glm::vec4> tangents;
-	if (!data.hasTangents) {
-		if (data.hasUVs) {
-			tangents = generateMikkTSpaceTangents(data, faceIndices);
-		} else {
-			std::cerr << "  Warning: no UVs for tangent generation on "
-			          << prim.GetPath() << std::endl;
-		}
-	}
-
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	triangulateFaces(data, faceIndices, tangents, vertices, indices);
-	applyWorldTransform(vertices, worldMat);
-
-	std::cout << "  Loaded mesh: " << prim.GetPath() << " (" << vertices.size()
-	          << " vertices, " << indices.size() / 3 << " triangles, "
-	          << (data.hasUVs ? "has UVs" : "NO UVs") << ")" << std::endl;
-
-	return renderSystem.uploadMesh(vertices, indices);
-}
-
-uint32_t SceneLoader::createMeshFromUsdGeomSubset(const UsdPrim& meshPrim,
-                                                  const UsdGeomSubset& subset,
-                                                  RenderSystem& renderSystem,
-                                                  const glm::mat4& worldMat) {
-	const UsdMeshData data = loadUsdMeshData(UsdGeomMesh(meshPrim));
-
-	VtArray<int> subsetFaceIndices;
-	subset.GetIndicesAttr().Get(&subsetFaceIndices);
-
-	// Generate tangents on original USD faces BEFORE triangulation
-	std::vector<glm::vec4> tangents;
-	if (!data.hasTangents && data.hasUVs) {
-		tangents = generateMikkTSpaceTangents(data, subsetFaceIndices);
-	}
-
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	triangulateFaces(data, subsetFaceIndices, tangents, vertices, indices);
-	applyWorldTransform(vertices, worldMat);
-
-	return renderSystem.uploadMesh(vertices, indices);
+	return RenderSystem::INVALID_MESH_ID;
 }

@@ -101,7 +101,7 @@ void Application::initScene() {
 	// Warm point light - center of courtyard, mid height
 	Entity fill = m_world.createEntity();
 	Transform fillTransform{};
-	fillTransform.position = glm::vec3(0.0f, 4.0f, 0.0f);
+	fillTransform.position = glm::vec3(-6.0f, 4.0f, 0.0f);
 	fillTransform.worldMatrix =
 	    glm::translate(glm::mat4(1.0f), fillTransform.position);
 	m_world.addComponent(fill, fillTransform);
@@ -109,13 +109,14 @@ void Application::initScene() {
 	fillLight.type = LightType::Point;
 	fillLight.color = glm::vec3(1.0f, 0.85f, 0.6f);
 	fillLight.intensity = 200.0f;
-	fillLight.radius = 12.0f;
-	// m_world.addComponent(fill, fillLight);
+	fillLight.radius = 10.0f;
+	fillLight.castsShadow = true;
+	m_world.addComponent(fill, fillLight);
 
 	// Cool point light - opposite end of the colonnade
 	Entity cool = m_world.createEntity();
 	Transform coolTransform{};
-	coolTransform.position = glm::vec3(8.0f, 3.0f, 0.0f);
+	coolTransform.position = glm::vec3(6.0f, 4.0f, 0.0f);
 	coolTransform.worldMatrix =
 	    glm::translate(glm::mat4(1.0f), coolTransform.position);
 	m_world.addComponent(cool, coolTransform);
@@ -124,7 +125,8 @@ void Application::initScene() {
 	coolLight.color = glm::vec3(0.6f, 0.8f, 1.0f);
 	coolLight.intensity = 150.0f;
 	coolLight.radius = 10.0f;
-	// m_world.addComponent(cool, coolLight);
+	coolLight.castsShadow = true;
+	m_world.addComponent(cool, coolLight);
 
 	// Spot light pointed at two pillars
 	Entity spotA = m_world.createEntity();
@@ -207,8 +209,11 @@ void Application::mainLoop() {
 
 		Input::update();
 
-		// Update transforms
+		// Update transforms, then derive world-space bounds from them.
+		// Ordering is load-bearing: drawFrame runs ShadowSystem::collectCasters
+		// and gatherRenderItems, both of which cull against BoundingBox::world.
 		m_transformSystem.update(m_world);
+		m_boundsSystem.update(m_world);
 
 		// Render
 		m_renderSystem.drawFrame(m_swapChain, m_world, m_cameraSystem,

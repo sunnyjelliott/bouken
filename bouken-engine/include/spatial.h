@@ -24,6 +24,13 @@ struct AABB {
 	bool isValid() const { return min.x <= max.x; }
 
 	AABB transformed(const glm::mat4& worldMat) const {
+		// An invalid (sentinel) box must stay invalid. Transforming the
+		// +/-FLT_MAX corners yields a garbage box that passes isValid(), which
+		// silently poisons every merge accumulator downstream - ShadowSystem's
+		// m_sceneBounds above all, whose isValid() guard is the only thing
+		// standing between a bad scene box and a broken cascade near plane.
+		if (!isValid()) return *this;
+
 		const glm::vec3 corners[8] = {
 		    {min.x, min.y, min.z}, {max.x, min.y, min.z}, {min.x, max.y, min.z},
 		    {max.x, max.y, min.z}, {min.x, min.y, max.z}, {max.x, min.y, max.z},

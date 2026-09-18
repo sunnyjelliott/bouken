@@ -212,6 +212,7 @@ file(MAKE_DIRECTORY ${SHADER_BINARY_DIR})
 set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.vert
     ${SHADER_SOURCE_DIR}/depth.vert
+    ${SHADER_SOURCE_DIR}/depth_dpsm.vert
     ${SHADER_SOURCE_DIR}/fullscreen.vert
     ${SHADER_SOURCE_DIR}/geometry.vert
     ${SHADER_SOURCE_DIR}/skybox.vert

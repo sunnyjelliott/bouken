@@ -201,8 +201,9 @@ VkFramebuffer buildFramebuffer(VulkanContext& context, VkRenderPass renderPass,
 // Vertex::getBindingDescription/getAttributeDescriptions return by value, so
 // the builder calls them itself; storing them in the desc would dangle.
 enum class VertexInput {
-	None,           // vertices generated in the vertex shader
-	StandardVertex  // Vertex struct bound at binding 0
+	None,          // vertices generated in the vertex shader
+	PositionOnly,  // Vertex struct at binding 0, position attribute only
+	StandardVertex // Vertex struct bound at binding 0
 };
 
 struct GraphicsPipelineDesc {
@@ -290,6 +291,7 @@ void buildGraphicsPipeline(VulkanContext& context,
 	// --- Vertex input ---
 	auto bindingDescription = Vertex::getBindingDescription();
 	auto attributeDescriptions = Vertex::getAttributeDescriptions();
+	auto positionAttribute = Vertex::getPositionAttributeDescription();
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType =
@@ -301,6 +303,14 @@ void buildGraphicsPipeline(VulkanContext& context,
 		    static_cast<uint32_t>(attributeDescriptions.size());
 		vertexInputInfo.pVertexAttributeDescriptions =
 		    attributeDescriptions.data();
+	} else if (desc.vertexInput == VertexInput::PositionOnly) {
+		// Same buffer and stride as StandardVertex - the unused attributes are
+		// simply not declared, so depth-only shaders do not trip
+		// WARNING-Shader-OutputNotConsumed.
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.vertexAttributeDescriptionCount = 1;
+		vertexInputInfo.pVertexAttributeDescriptions = &positionAttribute;
 	}
 
 	// --- Fixed state ---
@@ -429,9 +439,8 @@ void RenderSystem::createDepthPrepass() {
 
 	GraphicsPipelineDesc pipelineDesc{};
 	pipelineDesc.vertShaderPath = "shaders/depth_vert.spv";
-	// No fragment stage - this pass only writes depth.
-	// Vertex is sliced in the shader, so passing full vertex data is fine.
-	pipelineDesc.vertexInput = VertexInput::StandardVertex;
+	// No fragment stage - this pass only writes depth, so bind position only.
+	pipelineDesc.vertexInput = VertexInput::PositionOnly;
 	pipelineDesc.cullMode = VK_CULL_MODE_BACK_BIT;
 	pipelineDesc.depthTestEnable = VK_TRUE;
 	pipelineDesc.depthWriteEnable = VK_TRUE;

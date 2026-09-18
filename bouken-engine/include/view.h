@@ -9,7 +9,7 @@ class View {
    public:
 	class Iterator {
 	   public:
-		Iterator(World* world, Entity current, Entity end);
+		Iterator(World* world, uint16_t currentIndex, uint16_t endIndex);
 
 		Entity operator*() const;
 		Iterator& operator++();
@@ -20,8 +20,8 @@ class View {
 		bool hasAllComponents() const;
 
 		World* m_world;
-		Entity m_current;
-		Entity m_end;
+		uint16_t m_currentIndex;
+		uint16_t m_endIndex;
 	};
 
 	View(World* world);

@@ -40,7 +40,7 @@ glm::vec4 ShadowSystem::computeAtlasRegion(uint32_t tier, uint32_t slot) const {
 // transition that makes the resolved target safe to sample.
 // -------------------------------------------------------
 
-void ShadowSystem::createShadowTarget() {
+void ShadowSystem::createShadowAtlasTarget() {
 	RenderTargetDesc momentsDesc{};
 	momentsDesc.width = ATLAS_SIZE;
 	momentsDesc.height = ATLAS_SIZE;
@@ -195,6 +195,28 @@ LightSpaceMatrices ShadowSystem::computeSpotLightSpaceMatrix(
 	return {view, proj, proj * view};
 }
 
+glm::mat4 ShadowSystem::computeDPSMViewMatrix(
+    const Transform& transform) const {
+	const glm::vec3 position = glm::vec3(transform.worldMatrix[3]);
+
+	// Point lights have no facing direction to derive "forward" from - a
+	// DPSM pair covers the full sphere regardless of how it's bisected, so
+	// an arbitrary fixed world axis is fine; only which casters land in
+	// which tile changes, not total coverage. Fixed (not derived from the
+	// light's own transform like computeSpotLightSpaceMatrix's forward is)
+	// also means it's never collinear with `up` - no near-vertical guard
+	// needed here.
+	constexpr glm::vec3 forward(0.0f, 0.0f, 1.0f);
+	constexpr glm::vec3 up(0.0f, 1.0f, 0.0f);
+
+	// lookAt maps (center - eye) to view-space -Z by convention. Looking
+	// toward `position - forward` rather than `position + forward` flips
+	// that, landing `forward` itself at +Z - what depth_dpsm.vert's warp
+	// assumes (pole at dir.z -> +1, singularity at the *other* hemisphere's
+	// pole, not this one).
+	return glm::lookAt(position, position - forward, up);
+}
+
 // -------------------------------------------------------
 // Per-frame recording
 //
@@ -232,38 +254,41 @@ void ShadowSystem::renderBlur(VkCommandBuffer cmd) {
 		// sampling to the same tile, so the blur can no longer read across
 		// into a neighbouring light's region.
 		for (const ShadowSlotAssignment& assignment : m_activeCasters) {
-			const ShadowTier& tier = m_tiers[assignment.tier];
-			uint32_t tileX = assignment.slot * tier.resolution;
-			uint32_t tileY = tier.yOffset;
+			for (uint32_t t = 0; t < assignment.tileCount; t++) {
+				const ShadowTileSlot& tileSlot = assignment.tiles[t];
+				const ShadowTier& tier = m_tiers[tileSlot.tier];
+				uint32_t tileX = tileSlot.slot * tier.resolution;
+				uint32_t tileY = tier.yOffset;
 
-			VkViewport viewport{};
-			viewport.x = static_cast<float>(tileX);
-			viewport.y = static_cast<float>(tileY);
-			viewport.width = static_cast<float>(tier.resolution);
-			viewport.height = static_cast<float>(tier.resolution);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(cmd, 0, 1, &viewport);
+				VkViewport viewport{};
+				viewport.x = static_cast<float>(tileX);
+				viewport.y = static_cast<float>(tileY);
+				viewport.width = static_cast<float>(tier.resolution);
+				viewport.height = static_cast<float>(tier.resolution);
+				viewport.minDepth = 0.0f;
+				viewport.maxDepth = 1.0f;
+				vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-			VkRect2D scissor{
-			    {static_cast<int32_t>(tileX), static_cast<int32_t>(tileY)},
-			    {tier.resolution, tier.resolution}};
-			vkCmdSetScissor(cmd, 0, 1, &scissor);
+				VkRect2D scissor{
+				    {static_cast<int32_t>(tileX), static_cast<int32_t>(tileY)},
+				    {tier.resolution, tier.resolution}};
+				vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-			BlurPushConstants push{};
-			push.texelDirection = texelDirection;
-			push.tileUVMin =
-			    glm::vec2(assignment.atlasRegion.x, assignment.atlasRegion.y);
-			push.tileUVMax =
-			    push.tileUVMin +
-			    glm::vec2(assignment.atlasRegion.z, assignment.atlasRegion.w);
-			push.atlasSizeInv = 1.0f / static_cast<float>(ATLAS_SIZE);
+				BlurPushConstants push{};
+				push.texelDirection = texelDirection;
+				push.tileUVMin =
+				    glm::vec2(tileSlot.atlasRegion.x, tileSlot.atlasRegion.y);
+				push.tileUVMax =
+				    push.tileUVMin +
+				    glm::vec2(tileSlot.atlasRegion.z, tileSlot.atlasRegion.w);
+				push.atlasSizeInv = 1.0f / static_cast<float>(ATLAS_SIZE);
 
-			vkCmdPushConstants(cmd, m_blurPipelineLayout,
-			                   VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push),
-			                   &push);
+				vkCmdPushConstants(cmd, m_blurPipelineLayout,
+				                   VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+				                   sizeof(push), &push);
 
-			vkCmdDraw(cmd, 3, 1, 0, 0);
+				vkCmdDraw(cmd, 3, 1, 0, 0);
+			}
 		}
 
 		vkCmdEndRenderPass(cmd);

@@ -27,7 +27,7 @@ void ShadowSystem::initialize(VulkanContext& context) {
 
 	computeTierLayout();
 
-	createShadowTarget();
+	createShadowAtlasTarget();
 	createBlurTargets();
 	createCascadeTargets();
 	createCascadeUBO();
@@ -36,6 +36,7 @@ void ShadowSystem::initialize(VulkanContext& context) {
 	createCascadeBlurDescriptorSets();
 	createRenderPass();
 	createPipeline();
+	createDPSMPipeline();
 	createFramebuffer();
 	createCascadeFramebuffers();
 
@@ -47,27 +48,47 @@ void ShadowSystem::initialize(VulkanContext& context) {
 }
 
 void ShadowSystem::cleanup() {
+	// Every handle is nulled after destruction so a stale one can never be
+	// handed back to the driver a second time.
 	vkDestroyDescriptorPool(m_context->getDevice(), m_descriptorPool, nullptr);
+	m_descriptorPool = VK_NULL_HANDLE;
 
 	vkDestroyPipeline(m_context->getDevice(), m_pipeline, nullptr);
+	m_pipeline = VK_NULL_HANDLE;
 	vkDestroyPipelineLayout(m_context->getDevice(), m_pipelineLayout, nullptr);
+	m_pipelineLayout = VK_NULL_HANDLE;
 	vkDestroyFramebuffer(m_context->getDevice(), m_framebuffer, nullptr);
+	m_framebuffer = VK_NULL_HANDLE;
 	vkDestroyRenderPass(m_context->getDevice(), m_renderPass, nullptr);
+	m_renderPass = VK_NULL_HANDLE;
 	vkDestroySampler(m_context->getDevice(), m_sampler, nullptr);
+	m_sampler = VK_NULL_HANDLE;
 	m_shadowMoments.destroy(m_context->getDevice(), m_context->getAllocator());
 	m_shadowMomentsDepth.destroy(m_context->getDevice(),
 	                             m_context->getAllocator());
 
+	vkDestroyPipeline(m_context->getDevice(), m_dpsmPipeline, nullptr);
+	m_dpsmPipeline = VK_NULL_HANDLE;
+	vkDestroyPipelineLayout(m_context->getDevice(), m_dpsmPipelineLayout,
+	                        nullptr);
+	m_dpsmPipelineLayout = VK_NULL_HANDLE;
+
 	vkDestroyPipeline(m_context->getDevice(), m_blurPipeline, nullptr);
+	m_blurPipeline = VK_NULL_HANDLE;
 	vkDestroyPipelineLayout(m_context->getDevice(), m_blurPipelineLayout,
 	                        nullptr);
+	m_blurPipelineLayout = VK_NULL_HANDLE;
 	vkDestroyFramebuffer(m_context->getDevice(), m_blurScratchFramebuffer,
 	                     nullptr);
+	m_blurScratchFramebuffer = VK_NULL_HANDLE;
 	vkDestroyFramebuffer(m_context->getDevice(), m_blurResolvedFramebuffer,
 	                     nullptr);
+	m_blurResolvedFramebuffer = VK_NULL_HANDLE;
 	vkDestroyRenderPass(m_context->getDevice(), m_blurRenderPass, nullptr);
+	m_blurRenderPass = VK_NULL_HANDLE;
 	vkDestroyDescriptorSetLayout(m_context->getDevice(), m_blurSetLayout,
 	                             nullptr);
+	m_blurSetLayout = VK_NULL_HANDLE;
 	m_shadowBlurScratch.destroy(m_context->getDevice(),
 	                            m_context->getAllocator());
 	m_shadowResolved.destroy(m_context->getDevice(), m_context->getAllocator());
@@ -75,10 +96,13 @@ void ShadowSystem::cleanup() {
 	for (uint32_t i = 0; i < CASCADE_COUNT; i++) {
 		vkDestroyFramebuffer(m_context->getDevice(), m_cascades[i].framebuffer,
 		                     nullptr);
+		m_cascades[i].framebuffer = VK_NULL_HANDLE;
 		vkDestroyFramebuffer(m_context->getDevice(),
 		                     m_cascades[i].blurScratchFramebuffer, nullptr);
+		m_cascades[i].blurScratchFramebuffer = VK_NULL_HANDLE;
 		vkDestroyFramebuffer(m_context->getDevice(),
 		                     m_cascades[i].blurResolvedFramebuffer, nullptr);
+		m_cascades[i].blurResolvedFramebuffer = VK_NULL_HANDLE;
 
 		m_cascades[i].moments.destroy(m_context->getDevice(),
 		                              m_context->getAllocator());
@@ -92,6 +116,8 @@ void ShadowSystem::cleanup() {
 
 	vmaDestroyBuffer(m_context->getAllocator(), m_cascadeUBO,
 	                 m_cascadeUBOAllocation);
+	m_cascadeUBO = VK_NULL_HANDLE;
+	m_cascadeUBOAllocation = VK_NULL_HANDLE;
 }
 
 // -------------------------------------------------------
@@ -106,13 +132,6 @@ void ShadowSystem::collectCasters(World& world,
 	m_casters.clear();
 	m_sceneBounds = AABB{};
 
-	// Iterating the pool's own entity array, not world.view<>(): View scans
-	// the entire 0..MAX_ENTITIES handle range with a type_index hash lookup
-	// plus a per-pool hash lookup for every component at every step, so its
-	// cost is fixed at ~65k * N lookups no matter how small the scene is.
-	// Every shadow pass used to pay that separately - three cascade fits,
-	// three cascade record loops, and one record loop per spot tile.
-	// TransformSystem::update sets the precedent for going pool-first.
 	const ComponentPool<MeshRenderer>* pool =
 	    world.getComponentPool<MeshRenderer>();
 	if (!pool) return;
@@ -128,14 +147,15 @@ void ShadowSystem::collectCasters(World& world,
 		if (!world.hasComponent<Transform>(entity)) continue;
 		if (!world.hasComponent<BoundingBox>(entity)) continue;
 
-		const AABB& bounds = world.getComponent<BoundingBox>(entity).aabb;
+		const AABB& bounds = world.getComponent<BoundingBox>(entity).world;
 		if (!bounds.isValid()) continue;
 
 		const glm::mat4& worldMatrix =
 		    world.getComponent<Transform>(entity).worldMatrix;
 
 		for (uint32_t meshID : meshRenderer.getMeshIDs()) {
-			const RenderSystem::MeshInfo* mesh = renderSystem.getMeshInfo(meshID);
+			const RenderSystem::MeshInfo* mesh =
+			    renderSystem.getMeshInfo(meshID);
 			if (!mesh) continue;
 
 			m_casters.push_back({worldMatrix, bounds, mesh->indexCount,
@@ -166,18 +186,12 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 		const Light& light = world.getComponent<Light>(entity);
 		if (!light.castsShadow) continue;
 
-		// Step 3 scope: only spot lights have a light-space matrix function
-		// today. Directional/point casters arrive in steps 4/5 - guarding
-		// here rather than letting an untyped light silently misbehave.
-		if (light.type != LightType::Spot) continue;
+		if (light.type == LightType::Directional) continue;
 
 		const Transform& transform = world.getComponent<Transform>(entity);
 		glm::vec3 lightPos = glm::vec3(transform.worldMatrix[3]);
 		glm::vec3 diff = cameraPos - lightPos;
-		float distSq =
-		    glm::max(glm::dot(diff, diff), 0.01f);  // guards div-by-zero
-		                                            // if a light sits at
-		                                            // the camera position
+		float distSq = glm::max(glm::dot(diff, diff), 0.01f);
 
 		candidates.push_back({entity, light.intensity / distSq});
 	}
@@ -192,18 +206,34 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 	std::array<uint32_t, TIER_COUNT> tierNextSlot{};
 
 	for (const ScoredLight& candidate : candidates) {
+		const Light& light = world.getComponent<Light>(candidate.entity);
+		const bool isPoint = (light.type == LightType::Point);
+		const uint32_t tileCount = isPoint ? 2 : 1;
+
 		for (uint32_t tier = 0; tier < TIER_COUNT; tier++) {
-			if (tierNextSlot[tier] < m_tiers[tier].slotCount) {
-				uint32_t slot = tierNextSlot[tier]++;
-				m_activeCasters.push_back({candidate.entity, tier, slot,
-				                           computeAtlasRegion(tier, slot)});
+			if (tierNextSlot[tier] + tileCount <= m_tiers[tier].slotCount) {
+				ShadowSlotAssignment assignment{};
+				assignment.entity = candidate.entity;
+				assignment.representation =
+				    isPoint ? ShadowRepresentation::DualParaboloid
+				            : ShadowRepresentation::Perspective;
+				assignment.tileCount = tileCount;
+
+				for (uint32_t t = 0; t < tileCount; t++) {
+					uint32_t slot = tierNextSlot[tier]++;
+					assignment.tiles[t] = {tier, slot,
+					                       computeAtlasRegion(tier, slot)};
+				}
+
+				m_activeCasters.push_back(assignment);
 				break;
 			}
-			// tier full - falls through to try the next (lower) tier
+			// Tier full for this light's tile requirement - falls through to
+			// the next (lower) tier. A 2-tile point light skips a tier with
+			// exactly 1 free slot rather than taking it and leaving the light
+			// with a single hemisphere; a half-assignment isn't handled and
+			// would need explicit rollback if it came up.
 		}
-		// If every tier is full, this light gets no shadow this frame - an
-		// accepted budget consequence for now (round-robin scheduling,
-		// already roadmapped, is what actually addresses this later).
 	}
 
 	GPULight* lights = lightSystem.getLightsForWrite();
@@ -212,6 +242,25 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 	for (ShadowSlotAssignment& assignment : m_activeCasters) {
 		uint32_t index = lightSystem.getLightIndex(assignment.entity);
 		if (index == UINT32_MAX || index >= lightCount) continue;
+
+		if (assignment.representation == ShadowRepresentation::DualParaboloid) {
+			const Transform& transform =
+			    world.getComponent<Transform>(assignment.entity);
+			const Light& light = world.getComponent<Light>(assignment.entity);
+
+			assignment.dpsmView = computeDPSMViewMatrix(transform);
+			assignment.dpsmNear = POINT_SHADOW_NEAR;
+			assignment.dpsmFar = glm::max(light.radius, POINT_SHADOW_FAR_MIN);
+
+			lights[index].castsShadow = 1;
+			lights[index].dpsmView = assignment.dpsmView;
+			lights[index].dpsmAtlasRegionFront =
+			    assignment.tiles[0].atlasRegion;
+			lights[index].dpsmAtlasRegionBack = assignment.tiles[1].atlasRegion;
+			lights[index].dpsmNear = assignment.dpsmNear;
+			lights[index].dpsmFar = assignment.dpsmFar;
+			continue;
+		}
 
 		const Transform& transform =
 		    world.getComponent<Transform>(assignment.entity);
@@ -222,7 +271,7 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 
 		lights[index].castsShadow = 1;
 		lights[index].lightSpaceMatrix = assignment.matrices.viewProjection;
-		lights[index].shadowAtlasRegion = assignment.atlasRegion;
+		lights[index].shadowAtlasRegion = assignment.tiles[0].atlasRegion;
 	}
 
 	updateCascades(world, cameraSystem, aspectRatio);
@@ -245,6 +294,36 @@ static void recordCaster(VkCommandBuffer cmd, VkPipelineLayout layout,
 	                   &push);
 	vkCmdDrawIndexed(cmd, caster.indexCount, 1, caster.firstIndex,
 	                 caster.firstVertex, 0);
+}
+
+static void recordDPSMCaster(VkCommandBuffer cmd, VkPipelineLayout layout,
+                             const ShadowCaster& caster, const glm::mat4& view,
+                             float nearPlane, float farPlane,
+                             float hemisphereSign) {
+	DPSMPushConstants push{};
+	push.model = caster.worldMatrix;
+	push.view = view;
+	push.nearPlane = nearPlane;
+	push.farPlane = farPlane;
+	push.hemisphereSign = hemisphereSign;
+
+	vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push),
+	                   &push);
+	vkCmdDrawIndexed(cmd, caster.indexCount, 1, caster.firstIndex,
+	                 caster.firstVertex, 0);
+}
+
+// Single-plane test on the caster's bounds center against the point
+// light's view matrix - decision 4's accepted cheap version, no overlap
+// margin. tileIndex 0 = front (+Z in the corrected view convention above),
+// 1 = back. A caster straddling the plane gets fully assigned to one side;
+// the resulting boundary pop is deferred to "Shadows pt. 2."
+static bool casterInDPSMHemisphere(const glm::mat4& view, const AABB& bounds,
+                                   uint32_t tileIndex) {
+	glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
+	float viewSpaceZ = (view * glm::vec4(center, 1.0f)).z;
+	bool front = viewSpaceZ >= 0.0f;
+	return tileIndex == 0 ? front : !front;
 }
 
 void ShadowSystem::render(VkCommandBuffer commandBuffer,
@@ -288,8 +367,12 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer,
 		                  m_pipeline);
 
 		for (const ShadowSlotAssignment& assignment : m_activeCasters) {
-			const ShadowTier& tier = m_tiers[assignment.tier];
-			uint32_t tileX = assignment.slot * tier.resolution;
+			if (assignment.representation != ShadowRepresentation::Perspective)
+				continue;
+
+			const ShadowTileSlot& tileSlot = assignment.tiles[0];
+			const ShadowTier& tier = m_tiers[tileSlot.tier];
+			uint32_t tileX = tileSlot.slot * tier.resolution;
 			uint32_t tileY = tier.yOffset;
 
 			VkViewport viewport{};
@@ -312,6 +395,65 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer,
 				recordCaster(commandBuffer, m_pipelineLayout, caster,
 				             assignment.matrices.view,
 				             assignment.matrices.projection);
+			}
+		}
+
+		bool hasDPSMCasters = false;
+		for (const ShadowSlotAssignment& assignment : m_activeCasters) {
+			if (assignment.representation ==
+			    ShadowRepresentation::DualParaboloid) {
+				hasDPSMCasters = true;
+				break;
+			}
+		}
+
+		if (hasDPSMCasters) {
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			                  m_dpsmPipeline);
+
+			for (const ShadowSlotAssignment& assignment : m_activeCasters) {
+				if (assignment.representation !=
+				    ShadowRepresentation::DualParaboloid)
+					continue;
+
+				for (uint32_t hemisphere = 0; hemisphere < assignment.tileCount;
+				     hemisphere++) {
+					const ShadowTileSlot& tileSlot =
+					    assignment.tiles[hemisphere];
+					const ShadowTier& tier = m_tiers[tileSlot.tier];
+					uint32_t tileX = tileSlot.slot * tier.resolution;
+					uint32_t tileY = tier.yOffset;
+
+					VkViewport viewport{};
+					viewport.x = static_cast<float>(tileX);
+					viewport.y = static_cast<float>(tileY);
+					viewport.width = static_cast<float>(tier.resolution);
+					viewport.height = static_cast<float>(tier.resolution);
+					viewport.minDepth = 0.0f;
+					viewport.maxDepth = 1.0f;
+					vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+					VkRect2D scissor{{static_cast<int32_t>(tileX),
+					                  static_cast<int32_t>(tileY)},
+					                 {tier.resolution, tier.resolution}};
+					vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+					// hemisphere 0 = front/+1 (depth_dpsm.vert's pole at
+					// dir.z -> +1), 1 = back/-1 - matches
+					// computePointLightViewMatrix's +Z convention.
+					float hemisphereSign = (hemisphere == 0) ? 1.0f : -1.0f;
+
+					for (const ShadowCaster& caster : m_casters) {
+						if (!casterInDPSMHemisphere(assignment.dpsmView,
+						                            caster.bounds, hemisphere))
+							continue;
+
+						recordDPSMCaster(commandBuffer, m_dpsmPipelineLayout,
+						                 caster, assignment.dpsmView,
+						                 assignment.dpsmNear,
+						                 assignment.dpsmFar, hemisphereSign);
+					}
+				}
 			}
 		}
 

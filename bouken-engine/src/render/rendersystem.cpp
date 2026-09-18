@@ -214,35 +214,23 @@ void RenderSystem::createMeshBuffers() {
 	m_indexBuffer.allocate(m_context, INDEX_BUFFER_INITIAL_CAPACITY,
 	                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-	// Register built-in primitive meshes into the CPU mirror.
-	// Uploaded to GPU in one flush below.
-
-	auto registerMesh = [&](const std::vector<Vertex>& verts,
-	                        const std::vector<uint32_t>& inds) {
-		uint32_t id = m_nextMeshID++;
-		m_meshes[id] = {
-		    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
-		    .vertexCount = static_cast<uint32_t>(verts.size()),
-		    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
-		    .indexCount = static_cast<uint32_t>(inds.size())};
-		m_allVertices.insert(m_allVertices.end(), verts.begin(), verts.end());
-		m_allIndices.insert(m_allIndices.end(), inds.begin(), inds.end());
-
-		AABB aabb;
-		for (const Vertex& v : verts) {
-			aabb.min = glm::min(aabb.min, v.position);
-			aabb.max = glm::max(aabb.max, v.position);
-		}
-		m_meshAABBs[id] = aabb;
-	};
-
+	// Register built-in primitive meshes. Going through uploadMesh keeps the
+	// vertex->AABB fit in exactly one place; IDs come from the same
+	// m_nextMeshID++ and are assigned in registration order.
 	auto cube = Primitives::createCube(1.0f);
 	auto sphere = Primitives::createSphere(1.0f, 16, 16);
 	auto cone = Primitives::createCone(1.0f, 2.0f, 16);
+	auto cylinder = Primitives::createCylinder(1.0f, 2.0f, 16);
 
-	registerMesh(cube.vertices, cube.indices);      // Mesh 0: Cube
-	registerMesh(sphere.vertices, sphere.indices);  // Mesh 1: Sphere
-	registerMesh(cone.vertices, cone.indices);      // Mesh 2: Cone
+	uploadMesh(cube.vertices, cube.indices);          // BuiltinMesh::Cube
+	uploadMesh(sphere.vertices, sphere.indices);      // BuiltinMesh::Sphere
+	uploadMesh(cone.vertices, cone.indices);          // BuiltinMesh::Cone
+	uploadMesh(cylinder.vertices, cylinder.indices);  // BuiltinMesh::Cylinder
+
+	// SceneLoader maps USD primitive prims onto these IDs by value; if the
+	// two ever drift, a prim silently resolves to the wrong mesh.
+	assert(m_nextMeshID == static_cast<uint32_t>(BuiltinMesh::Count) &&
+	       "Built-in mesh IDs must match the BuiltinMesh enum");
 
 	m_meshBufferDirty = true;
 	flushMeshUploads();
@@ -310,7 +298,7 @@ void RenderSystem::gatherRenderItems(World& world,
 
 		if (world.hasComponent<BoundingBox>(entity)) {
 			if (!frustum.intersects(
-			        world.getComponent<BoundingBox>(entity).aabb))
+			        world.getComponent<BoundingBox>(entity).world))
 				continue;
 		}
 

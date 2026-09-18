@@ -43,13 +43,45 @@ struct ShadowTier {
 	uint32_t yOffset;  // pixel offset of this tier's band within the atlas
 };
 
-struct ShadowSlotAssignment {
-	Entity entity = NULL_ENTITY;
+enum class ShadowRepresentation {
+	Perspective,     // spot lights today; cubemap faces individually, later
+	DualParaboloid,  // point lights, this pass
+};
+
+struct ShadowTileSlot {
 	uint32_t tier = 0;
 	uint32_t slot = 0;
-	glm::vec4 atlasRegion;  // xy = uv offset, zw = uv scale
-	LightSpaceMatrices matrices;
-	Frustum frustum;  // matrices.viewProjection, for draw-time caster culling
+	glm::vec4 atlasRegion;
+};
+
+struct ShadowSlotAssignment {
+	Entity entity = NULL_ENTITY;
+	ShadowRepresentation representation = ShadowRepresentation::Perspective;
+
+	static constexpr uint32_t MAX_TILES = 2;  // bump when cubemap needs 6
+	std::array<ShadowTileSlot, MAX_TILES> tiles{};
+	uint32_t tileCount = 1;
+
+	LightSpaceMatrices matrices;  // Perspective only
+	Frustum frustum;              // Perspective only
+
+	glm::mat4 dpsmView{1.0f};
+	float dpsmNear = 0.0f;
+	float dpsmFar = 0.0f;
+};
+
+// ---------------------------------------------------------------------------
+// Dual Paraboloid Shadow Mapping
+//
+// Special case for push constants, used in depth_dpsm.vert
+// ---------------------------------------------------------------------------
+
+struct DPSMPushConstants {
+	glm::mat4 model;
+	glm::mat4 view;
+	float nearPlane;
+	float farPlane;
+	float hemisphereSign;  // +1.0 front, -1.0 back
 };
 
 // ---------------------------------------------------------------------------
@@ -153,6 +185,7 @@ class ShadowSystem {
 
 	// Shared pipelines - shadowsystem_pipelines.cpp
 	void createPipeline();
+	void createDPSMPipeline();
 	void createBlurPipeline();
 
 	// Spot atlas - shadowsystem_atlas.cpp
@@ -160,8 +193,9 @@ class ShadowSystem {
 	glm::vec4 computeAtlasRegion(uint32_t tier, uint32_t slot) const;
 	LightSpaceMatrices computeSpotLightSpaceMatrix(const Transform& transform,
 	                                               const Light& light) const;
+	glm::mat4 computeDPSMViewMatrix(const Transform& transform) const;
 
-	void createShadowTarget();
+	void createShadowAtlasTarget();
 	void createFramebuffer();
 	void createBlurTargets();
 	void createBlurFramebuffers();
@@ -206,6 +240,8 @@ class ShadowSystem {
 	VkRenderPass m_renderPass = VK_NULL_HANDLE;
 	VkPipeline m_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
+	VkPipeline m_dpsmPipeline = VK_NULL_HANDLE;  // shares m_renderPass
+	VkPipelineLayout m_dpsmPipelineLayout = VK_NULL_HANDLE;
 	VkSampler m_sampler = VK_NULL_HANDLE;
 
 	VkRenderPass m_blurRenderPass =
@@ -220,6 +256,8 @@ class ShadowSystem {
 	static constexpr uint32_t SHADOW_MAP_SIZE = 2048;  // single tile, step 1
 	static constexpr float SHADOW_NEAR = 0.5f;
 	static constexpr float SHADOW_FAR = 30.0f;
+	static constexpr float POINT_SHADOW_NEAR = 0.1f;
+	static constexpr float POINT_SHADOW_FAR_MIN = 1.0f;
 
 	std::array<ShadowTier, TIER_COUNT> m_tiers{};
 	std::vector<ShadowSlotAssignment> m_activeCasters;

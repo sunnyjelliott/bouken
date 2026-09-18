@@ -21,15 +21,23 @@ layout(set = 1, binding = 9) uniform sampler2D   u_brdfLut; // BRDF LUT
 layout(set = 1, binding = 10) uniform samplerCube u_envCubemap; // final cubemap
 
 struct LightData {
-    vec4     positionAndRadius;   // xyz = pos (point/spot) or dir (directional), w = radius
-    vec4     colorAndIntensity;   // xyz = color, w = intensity
-    vec4     directionAndCosOuter; // xyz = direction, w = cos(outerAngle)
-    uint     type;                // 0=directional, 1=point, 2=spot
+    vec4     positionAndRadius;
+    vec4     colorAndIntensity;
+    vec4     directionAndCosOuter;
+    uint     type;
     float    cosInner;
     uint     castsShadow;
     float    _pad;
-    mat4     lightSpaceMatrix;
-    vec4     shadowAtlasRegion;
+    mat4     lightSpaceMatrix;       // Perspective (spot) only
+    vec4     shadowAtlasRegion;      // Perspective (spot) only
+
+    // DualParaboloid (point) only
+    mat4     dpsmView;
+    vec4     dpsmAtlasRegionFront;
+    vec4     dpsmAtlasRegionBack;
+    float    dpsmNear;
+    float    dpsmFar;
+    float    _dpsmPad[2];
 };
 
 layout(set = 1, binding = 5, std430) readonly buffer LightBuffer {
@@ -299,6 +307,44 @@ float sampleShadow(vec3 worldPos, mat4 lightSpaceMatrix, vec4 atlasRegion) {
 	return momentShadow4MSM(moments, shadowNDC.z);
 }
 
+// Mirrors depth_dpsm.vert's warp exactly - both stages have to agree on the
+// same math and the same view convention (forward at +Z post-transform,
+// per computePointLightViewMatrix) or this silently samples the wrong tile
+// rather than failing to compile. nearPlane is unused here for the same
+// reason it's unused in the vertex shader - carried for a future near-clip
+// guard, not needed by the warp itself.
+float sampleDPSM(vec3 worldPos, mat4 dpsmView, float nearPlane, float farPlane,
+                  vec4 atlasRegionFront, vec4 atlasRegionBack) {
+    vec4 vs4 = dpsmView * vec4(worldPos, 1.0);
+    vec3 vs  = vs4.xyz / vs4.w;
+
+    // Hemisphere select - matches hemisphere 0/1 in ShadowSystem::render()'s
+    // draw loop, independently computed here per-fragment rather than
+    // reusing casterInDPSMHemisphere's coarse AABB-center test. The two
+    // don't need to be the same test, only the same convention.
+    float hemisphereSign = (vs.z >= 0.0) ? 1.0 : -1.0;
+    vs.x *= hemisphereSign;
+    vs.z *= hemisphereSign;
+
+    float radialDist = length(vs);
+    vec3  dir        = vs / max(radialDist, 1e-5);
+    vec2  warped     = dir.xy / (1.0 + dir.z);
+    vec2  shadowUV   = warped * 0.5 + 0.5;
+
+    float normalizedDepth = radialDist / farPlane;
+
+    if (shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
+        shadowUV.y < 0.0 || shadowUV.y > 1.0 || normalizedDepth > 1.0) {
+        return 1.0; // outside this hemisphere's valid region - unshadowed
+    }
+
+    vec4 atlasRegion = (hemisphereSign > 0.0) ? atlasRegionFront : atlasRegionBack;
+    vec2 atlasUV     = atlasRegion.xy + shadowUV * atlasRegion.zw;
+
+    vec4 moments = texture(u_shadowMap, atlasUV);
+    return momentShadow4MSM(moments, normalizedDepth);
+}
+
 // -------------------------------------------------------
 // Cascade Shadow Mapping
 // -------------------------------------------------------
@@ -397,22 +443,26 @@ void main() {
             directLight += evaluateBRDF(ws_normal, V, L, baseColor, metallic, roughness)
                         * lightColor * shadow;
         } else if (light.type == 1u) {
-            // Point - inverse square attenuation
             vec3  toLight = light.positionAndRadius.xyz - ws_position;
             float dist    = length(toLight);
             float radius  = light.positionAndRadius.w;
 
-            // Windowed inverse square - clean falloff at radius boundary
             float attenuation = pow(max(1.0 - pow(dist / radius, 4.0), 0.0), 2.0)
                             / (dist * dist + 1.0);
 
             if (attenuation > 0.0001) {
                 vec3 L = normalize(toLight);
+
+                float shadow = (light.castsShadow == 1u)
+                    ? sampleDPSM(ws_position, light.dpsmView, light.dpsmNear,
+                                light.dpsmFar, light.dpsmAtlasRegionFront,
+                                light.dpsmAtlasRegionBack)
+                    : 1.0;
+
                 directLight += evaluateBRDF(ws_normal, V, L,
                                             baseColor, metallic, roughness)
-                            * lightColor * attenuation;
+                            * lightColor * attenuation * shadow;
             }
-
         } else if (light.type == 2u) {
             // Spot - point light with angular falloff
             vec3  toLight = light.positionAndRadius.xyz - ws_position;

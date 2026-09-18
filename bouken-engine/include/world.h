@@ -52,6 +52,14 @@ class World {
 
 	// Stats
 	size_t getEntityCount() const { return m_entityManager.getAliveCount(); }
+	size_t getEntityCapacity() const { return m_entityManager.getCapacity(); }
+
+	bool isIndexAlive(uint16_t index) const {
+		return m_entityManager.isIndexAlive(index);
+	}
+	Entity getHandleAtIndex(uint16_t index) const {
+		return m_entityManager.getHandleAtIndex(index);
+	}
 
    private:
 	template <typename T>

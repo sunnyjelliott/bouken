@@ -27,16 +27,15 @@ void ShadowSystem::createPipeline() {
 	};
 
 	auto bindingDescription = Vertex::getBindingDescription();
-	auto attributeDescriptions = Vertex::getAttributeDescriptions();
+	auto attributeDescription = Vertex::getPositionAttributeDescription();
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType =
 	    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputInfo.vertexBindingDescriptionCount = 1;
 	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputInfo.vertexAttributeDescriptionCount =
-	    static_cast<uint32_t>(attributeDescriptions.size());
-	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+	vertexInputInfo.vertexAttributeDescriptionCount = 1;
+	vertexInputInfo.pVertexAttributeDescriptions = &attributeDescription;
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 	inputAssembly.sType =
@@ -124,6 +123,146 @@ void ShadowSystem::createPipeline() {
 	                              &pipelineInfo, nullptr,
 	                              &m_pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create shadow pipeline!");
+	}
+
+	vkDestroyShaderModule(m_context->getDevice(), fragModule, nullptr);
+	vkDestroyShaderModule(m_context->getDevice(), vertModule, nullptr);
+}
+
+// -------------------------------------------------------
+// DPSM pipeline (point lights)
+//
+// Shares m_renderPass with the perspective pipeline above - both write into
+// the same atlas framebuffer via the same moments/depth attachments, just a
+// different vertex shader and push-constant shape. msm_moments.frag reads
+// gl_FragCoord.z generically, so the fragment stage is untouched here too;
+// only the vertex stage and push constants fork.
+// -------------------------------------------------------
+
+void ShadowSystem::createDPSMPipeline() {
+	auto vertCode = ShaderUtils::readFile("shaders/depth_dpsm_vert.spv");
+	auto fragCode = ShaderUtils::readFile("shaders/msm_moments_frag.spv");
+	VkShaderModule vertModule =
+	    ShaderUtils::createShaderModule(*m_context, vertCode);
+	VkShaderModule fragModule =
+	    ShaderUtils::createShaderModule(*m_context, fragCode);
+
+	VkPipelineShaderStageCreateInfo shaderStages[] = {
+	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+	     VK_SHADER_STAGE_VERTEX_BIT, vertModule, "main", nullptr},
+	    {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+	     VK_SHADER_STAGE_FRAGMENT_BIT, fragModule, "main", nullptr},
+	};
+
+	// Same vertex input as the perspective pipeline: render()'s draw calls
+	// share one bound vertex/index buffer across every shadow pass, so the
+	// binding/attribute layout has to match even though depth_dpsm.vert only
+	// consumes a_position.
+	auto bindingDescription = Vertex::getBindingDescription();
+	auto attributeDescription = Vertex::getPositionAttributeDescription();
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputInfo.vertexAttributeDescriptionCount = 1;
+	vertexInputInfo.pVertexAttributeDescriptions = &attributeDescription;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.scissorCount = 1;
+
+	// Unchanged from createPipeline(): BACK_BIT + CCW is correct for both
+	// DPSM hemispheres because depth_dpsm.vert negates x and z together for
+	// the back hemisphere (a proper rotation, not a reflection) rather than
+	// negating z alone - see that shader's comment.
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendAttachment{};
+	blendAttachment.colorWriteMask =
+	    VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+	    VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	blendAttachment.blendEnable = VK_FALSE;
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType =
+	    VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = &blendAttachment;
+
+	std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT,
+	                                             VK_DYNAMIC_STATE_SCISSOR};
+	VkPipelineDynamicStateCreateInfo dynamicState{};
+	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicState.dynamicStateCount =
+	    static_cast<uint32_t>(dynamicStates.size());
+	dynamicState.pDynamicStates = dynamicStates.data();
+
+	// DPSMPushConstants (shadowsystem.h) must match depth_dpsm.vert's
+	// PushConstants block member-for-member - no reflection ties these
+	// together, only convention.
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(DPSMPushConstants);
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = 0;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+	if (vkCreatePipelineLayout(m_context->getDevice(), &pipelineLayoutInfo,
+	                           nullptr, &m_dpsmPipelineLayout) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create DPSM pipeline layout!");
+	}
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStages;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = &dynamicState;
+	pipelineInfo.layout = m_dpsmPipelineLayout;
+	pipelineInfo.renderPass =
+	    m_renderPass;  // shared with the perspective pipeline
+	pipelineInfo.subpass = 0;
+
+	if (vkCreateGraphicsPipelines(m_context->getDevice(), VK_NULL_HANDLE, 1,
+	                              &pipelineInfo, nullptr,
+	                              &m_dpsmPipeline) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create DPSM pipeline!");
 	}
 
 	vkDestroyShaderModule(m_context->getDevice(), fragModule, nullptr);

@@ -5,45 +5,45 @@
 
 // Iterator implementation
 template <typename... Components>
-View<Components...>::Iterator::Iterator(World* world, Entity current,
-                                        Entity end)
-    : m_world(world), m_current(current), m_end(end) {
+View<Components...>::Iterator::Iterator(World* world, uint16_t currentIndex,
+                                        uint16_t endIndex)
+    : m_world(world), m_currentIndex(currentIndex), m_endIndex(endIndex) {
 	skipInvalid();
 }
 
 template <typename... Components>
 Entity View<Components...>::Iterator::operator*() const {
-	return m_current;
+	return m_world->getHandleAtIndex(m_currentIndex);
 }
 
 template <typename... Components>
 typename View<Components...>::Iterator&
 View<Components...>::Iterator::operator++() {
-	m_current++;
+	m_currentIndex++;
 	skipInvalid();
 	return *this;
 }
 
 template <typename... Components>
 bool View<Components...>::Iterator::operator!=(const Iterator& other) const {
-	return m_current != other.m_current;
+	return m_currentIndex != other.m_currentIndex;
 }
 
 template <typename... Components>
 void View<Components...>::Iterator::skipInvalid() {
-	while (m_current < m_end && !hasAllComponents()) {
-		m_current++;
+	while (m_currentIndex < m_endIndex && !hasAllComponents()) {
+		m_currentIndex++;
 	}
 }
 
 template <typename... Components>
 bool View<Components...>::Iterator::hasAllComponents() const {
-	if (!m_world->isEntityAlive(m_current)) {
+	if (!m_world->isIndexAlive(m_currentIndex)) {
 		return false;
 	}
 
-	// Fold expression: check all components
-	return (m_world->hasComponent<Components>(m_current) && ...);
+	Entity handle = m_world->getHandleAtIndex(m_currentIndex);
+	return (m_world->hasComponent<Components>(handle) && ...);
 }
 
 // View implementation
@@ -52,11 +52,12 @@ View<Components...>::View(World* world) : m_world(world) {}
 
 template <typename... Components>
 typename View<Components...>::Iterator View<Components...>::begin() {
-	return Iterator(m_world, 0, EntityUtil::MAX_ENTITIES);
+	return Iterator(m_world, 0,
+	                static_cast<uint16_t>(m_world->getEntityCapacity()));
 }
 
 template <typename... Components>
 typename View<Components...>::Iterator View<Components...>::end() {
-	return Iterator(m_world, EntityUtil::MAX_ENTITIES,
-	                EntityUtil::MAX_ENTITIES);
+	uint16_t capacity = static_cast<uint16_t>(m_world->getEntityCapacity());
+	return Iterator(m_world, capacity, capacity);
 }

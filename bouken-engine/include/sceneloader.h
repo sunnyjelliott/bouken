@@ -84,11 +84,7 @@ class SceneLoader {
 	    UsdGeomXformCache& xformCache, std::vector<MeshWorkItem>& outWorkItems);
 	static void extractUsdTransform(const UsdPrim& prim, Transform& transform);
 	static bool isUsdGeometry(const UsdPrim& prim);
-	static uint32_t createMeshFromUsdGeom(const UsdPrim& prim,
-	                                      RenderSystem& renderSystem,
-	                                      const glm::mat4& worldMat);
-	static uint32_t createMeshFromUsdGeomSubset(const UsdPrim& meshPrim,
-	                                            const UsdGeomSubset& subset,
-	                                            RenderSystem& renderSystem,
-	                                            const glm::mat4& worldMat);
+	// Maps a USD primitive prim (Cube/Sphere/Cone/Cylinder) onto a built-in
+	// mesh ID. Returns RenderSystem::INVALID_MESH_ID for anything unmapped.
+	static uint32_t builtinMeshForPrim(const UsdPrim& prim);
 };

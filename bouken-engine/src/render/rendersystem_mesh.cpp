@@ -5,7 +5,9 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
                                   const std::vector<uint32_t>& indices) {
 	if (vertices.empty() || indices.empty()) {
 		std::cerr << "Cannot upload empty mesh" << std::endl;
-		return 0;  // Return default cube
+		// Not 0 - that is BuiltinMesh::Cube, a real mesh whose AABB callers
+		// would silently inherit and then cull against.
+		return INVALID_MESH_ID;
 	}
 
 	uint32_t meshID = m_nextMeshID++;
@@ -22,6 +24,8 @@ uint32_t RenderSystem::uploadMesh(const std::vector<Vertex>& vertices,
 	m_allIndices.insert(m_allIndices.end(), indices.begin(), indices.end());
 	m_meshBufferDirty = true;
 
+	// The one place a mesh AABB is ever computed. m_meshAABBs is the single
+	// source of truth for mesh bounds; BoundingBox::local is sourced from it.
 	AABB aabb;
 	for (const Vertex& v : vertices) {
 		aabb.min = glm::min(aabb.min, v.position);
@@ -118,29 +122,14 @@ AABB RenderSystem::getMeshAABB(uint32_t meshID) const {
 	return it != m_meshAABBs.end() ? it->second : AABB{};
 }
 
+AABB RenderSystem::getMeshAABB(const std::vector<uint32_t>& meshIDs) const {
+	AABB result;
+	for (uint32_t meshID : meshIDs)
+		result = AABB::merge(result, getMeshAABB(meshID));
+	return result;
+}
+
 uint32_t RenderSystem::loadMesh(const std::string& filepath) {
 	LoadedMesh loadedMesh = MeshLoader::loadOBJ(filepath);
-
-	uint32_t meshID = m_nextMeshID++;
-
-	m_meshes[meshID] = {
-	    .firstVertex = static_cast<uint32_t>(m_allVertices.size()),
-	    .vertexCount = static_cast<uint32_t>(loadedMesh.vertices.size()),
-	    .firstIndex = static_cast<uint32_t>(m_allIndices.size()),
-	    .indexCount = static_cast<uint32_t>(loadedMesh.indices.size())};
-
-	m_allVertices.insert(m_allVertices.end(), loadedMesh.vertices.begin(),
-	                     loadedMesh.vertices.end());
-	m_allIndices.insert(m_allIndices.end(), loadedMesh.indices.begin(),
-	                    loadedMesh.indices.end());
-	m_meshBufferDirty = true;
-
-	AABB aabb;
-	for (const Vertex& v : loadedMesh.vertices) {
-		aabb.min = glm::min(aabb.min, v.position);
-		aabb.max = glm::max(aabb.max, v.position);
-	}
-	m_meshAABBs[meshID] = aabb;
-
-	return meshID;
+	return uploadMesh(loadedMesh.vertices, loadedMesh.indices);
 }

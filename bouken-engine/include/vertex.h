@@ -37,7 +37,7 @@ struct Vertex {
 		// Tangent
 		attributeDescriptions[2].binding = 0;
 		attributeDescriptions[2].location = 2;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 		attributeDescriptions[2].offset = offsetof(Vertex, tangent);
 
 		// UV
@@ -53,5 +53,15 @@ struct Vertex {
 		attributeDescriptions[4].offset = offsetof(Vertex, color);
 
 		return attributeDescriptions;
+	}
+
+	// Used for depth-only passes
+	static VkVertexInputAttributeDescription getPositionAttributeDescription() {
+		VkVertexInputAttributeDescription attributeDescription{};
+		attributeDescription.binding = 0;
+		attributeDescription.location = 0;
+		attributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescription.offset = offsetof(Vertex, position);
+		return attributeDescription;
 	}
 };
