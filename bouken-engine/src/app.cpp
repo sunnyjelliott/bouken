@@ -24,6 +24,50 @@ class UsdDiagnosticDelegate final : public TfDiagnosticMgr::Delegate {
 		std::cout << "[USD WARN] " << w.GetCommentary() << std::endl;
 	}
 };
+
+// Everything a light entity needs, flat, so a scene reads as a list of values
+// rather than a wall of createEntity/addComponent triples. Defaults mirror
+// Light's own (lighting/light.h) - omit any field that doesn't apply to the
+// type. Being a plain aggregate, a bulk set can also be written as a table:
+//
+//   static const LightDesc kColonnadeLights[] = { ... };
+//   for (const LightDesc& desc : kColonnadeLights) spawnLight(m_world, desc);
+struct LightDesc {
+	LightType type = LightType::Point;
+	glm::vec3 position = glm::vec3(0.0f);
+	glm::vec3 eulerDegrees = glm::vec3(0.0f);  // pitch, yaw, roll
+	glm::vec3 color = glm::vec3(1.0f);
+	float intensity = 1.0f;
+	float radius = 10.0f;      // Point + Spot
+	float innerAngle = 15.0f;  // Spot, degrees
+	float outerAngle = 30.0f;  // Spot, degrees
+	bool castsShadow = false;
+};
+
+Entity spawnLight(World& world, const LightDesc& desc) {
+	Entity entity = world.createEntity();
+
+	Transform transform{};
+	transform.position = desc.position;
+	transform.rotation = glm::quat(glm::radians(desc.eulerDegrees));
+	// TransformSystem::update doesn't run until mainLoop, but LightSystem and
+	// ShadowSystem read worldMatrix - seed it now with the same call that
+	// update would make. One formula covers all three types: a directional
+	// light's direction comes from the rotation alone, so carrying its (zero)
+	// translation costs nothing.
+	transform.worldMatrix = transform.getLocalMatrix();
+	world.addComponent(entity, transform);
+
+	world.addComponent(entity, Light{.type = desc.type,
+	                                 .color = desc.color,
+	                                 .intensity = desc.intensity,
+	                                 .radius = desc.radius,
+	                                 .innerAngle = desc.innerAngle,
+	                                 .outerAngle = desc.outerAngle,
+	                                 .castsShadow = desc.castsShadow});
+
+	return entity;
+}
 }  // namespace
 
 Application::Application()
@@ -85,80 +129,53 @@ void Application::initScene() {
 	m_cameraSystem.setActiveCamera(m_activeCamera);
 
 	// Directional sun - warm, from above and to one side
-	Entity sun = m_world.createEntity();
-	Transform sunTransform{};
-	sunTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-60.0f), glm::radians(45.0f), 0.0f));
-	sunTransform.worldMatrix = glm::mat4_cast(sunTransform.rotation);
-	m_world.addComponent(sun, sunTransform);
-	Light sunLight{};
-	sunLight.type = LightType::Directional;
-	sunLight.color = glm::vec3(1.0f, 0.95f, 0.8f);
-	sunLight.intensity = 3.0f;
-	sunLight.castsShadow = true;
-	m_world.addComponent(sun, sunLight);
+	spawnLight(m_world, {.type = LightType::Directional,
+	                     .eulerDegrees = {-60.0f, 45.0f, 0.0f},
+	                     .color = {1.0f, 0.95f, 0.8f},
+	                     .intensity = 3.0f,
+	                     .castsShadow = true});
 
-	// Warm point light - center of courtyard, mid height
-	Entity fill = m_world.createEntity();
-	Transform fillTransform{};
-	fillTransform.position = glm::vec3(-6.0f, 4.0f, 0.0f);
-	fillTransform.worldMatrix =
-	    glm::translate(glm::mat4(1.0f), fillTransform.position);
-	m_world.addComponent(fill, fillTransform);
-	Light fillLight{};
-	fillLight.type = LightType::Point;
-	fillLight.color = glm::vec3(1.0f, 0.85f, 0.6f);
-	fillLight.intensity = 200.0f;
-	fillLight.radius = 10.0f;
-	fillLight.castsShadow = true;
-	m_world.addComponent(fill, fillLight);
+	for (int i = 0; i < 3; ++i) {
+		// Warm point light
+		spawnLight(m_world, {.type = LightType::Point,
+		                     .position = {-4.0f + (4.0f * i), 7.0f, 1.0f},
+		                     .color = {1.0f, 0.85f, 0.6f},
+		                     .intensity = 200.0f,
+		                     .radius = 10.0f,
+		                     .castsShadow = true});
 
-	// Cool point light - opposite end of the colonnade
-	Entity cool = m_world.createEntity();
-	Transform coolTransform{};
-	coolTransform.position = glm::vec3(6.0f, 4.0f, 0.0f);
-	coolTransform.worldMatrix =
-	    glm::translate(glm::mat4(1.0f), coolTransform.position);
-	m_world.addComponent(cool, coolTransform);
-	Light coolLight{};
-	coolLight.type = LightType::Point;
-	coolLight.color = glm::vec3(0.6f, 0.8f, 1.0f);
-	coolLight.intensity = 150.0f;
-	coolLight.radius = 10.0f;
-	coolLight.castsShadow = true;
-	m_world.addComponent(cool, coolLight);
+		// Cool point light
+		spawnLight(m_world, {.type = LightType::Point,
+		                     .position = {4.0f - (4.0f * i), 7.0f, -1.0f},
+		                     .color = {0.6f, 0.8f, 1.0f},
+		                     .intensity = 150.0f,
+		                     .radius = 10.0f,
+		                     .castsShadow = true});
+	}
 
 	// Spot light pointed at two pillars
-	Entity spotA = m_world.createEntity();
-	Transform spotATransform{};
-	spotATransform.position = glm::vec3(-2.0f, 3.0f, 4.0f);
-	spotATransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-30.0f), glm::radians(90.0f), 0.0f));
-	spotATransform.worldMatrix =
-	    glm::translate(glm::mat4(1.0f), spotATransform.position) *
-	    glm::mat4_cast(spotATransform.rotation);
-	m_world.addComponent(spotA, spotATransform);
-	Light spotLight{};
-	spotLight.type = LightType::Spot;
-	spotLight.color = glm::vec3(1.0f, 1.0f, 0.9f);
-	spotLight.intensity = 500.0f;
-	spotLight.radius = 10.0f;
-	spotLight.innerAngle = 15.0f;
-	spotLight.outerAngle = 30.0f;
-	spotLight.castsShadow = true;
-	m_world.addComponent(spotA, spotLight);
+	spawnLight(m_world, {.type = LightType::Spot,
+	                     .position = {-2.0f, 3.0f, 4.0f},
+	                     .eulerDegrees = {-30.0f, 90.0f, 0.0f},
+	                     .color = {1.0f, 1.0f, 0.9f},
+	                     .intensity = 500.0f,
+	                     .radius = 10.0f,
+	                     .innerAngle = 15.0f,
+	                     .outerAngle = 30.0f,
+	                     .castsShadow = true});
 
 	// Second Spot light pointed at two pillars
-	Entity spotB = m_world.createEntity();
-	Transform spotBTransform{};
-	spotBTransform.position = glm::vec3(-2.0f, 3.0f, 0.0f);
-	spotBTransform.rotation =
-	    glm::quat(glm::vec3(glm::radians(-30.0f), glm::radians(180.0f), 0.0f));
-	spotBTransform.worldMatrix =
-	    glm::translate(glm::mat4(1.0f), spotBTransform.position) *
-	    glm::mat4_cast(spotBTransform.rotation);
-	m_world.addComponent(spotB, spotBTransform);
-	m_world.addComponent(spotB, spotLight);
+	spawnLight(m_world, {.type = LightType::Spot,
+	                     .position = {-4.0f, 3.0f, 0.0f},
+	                     .eulerDegrees = {-30.0f, 180.0f, 0.0f},
+	                     .color = {1.0f, 1.0f, 0.9f},
+	                     .intensity = 500.0f,
+	                     .radius = 10.0f,
+	                     .innerAngle = 15.0f,
+	                     .outerAngle = 30.0f,
+	                     .castsShadow = true});
+
+	// Additional scene lights go here.
 
 	SceneLoadOptions options;
 	options.createHeirarchy = true;

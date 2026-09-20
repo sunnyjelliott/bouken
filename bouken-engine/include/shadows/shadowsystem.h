@@ -37,6 +37,13 @@ static constexpr std::array<uint32_t, TIER_COUNT> TIER_RESOLUTIONS = {
 static constexpr std::array<uint32_t, TIER_COUNT> TIER_SLOT_COUNTS = {2, 4, 8,
                                                                       16};
 
+// Highest tier a dual-paraboloid pair may claim. The warp only fills the disk
+// inscribed in each tile, so a high tier's corners are never rasterized - and
+// a point light takes two slots, so one of them empties the top tier by itself
+// (TIER_SLOT_COUNTS[0] == 2) and pushes every spot down a tier. Tiers 2 and 3
+// together hold 24 slots, i.e. 12 point lights.
+static constexpr uint32_t DPSM_MIN_TIER = 2;  // 512x512 per hemisphere
+
 struct ShadowTier {
 	uint32_t resolution;
 	uint32_t slotCount;
@@ -66,6 +73,7 @@ struct ShadowSlotAssignment {
 	Frustum frustum;              // Perspective only
 
 	glm::mat4 dpsmView{1.0f};
+	glm::vec3 dpsmLightPos{0.0f};  // world space - dpsmView's inverse translation
 	float dpsmNear = 0.0f;
 	float dpsmFar = 0.0f;
 };

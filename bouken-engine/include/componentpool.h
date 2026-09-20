@@ -22,6 +22,14 @@ class ComponentPool : public IComponentPool {
 	T& get(Entity entity);
 	const T& get(Entity entity) const;
 
+	// Get component for entity, or nullptr when it has none.
+	//
+	// has() followed by get() hashes the same key twice. A hot loop that
+	// walks one pool and reaches across to another - every shadow pass does -
+	// wants the single lookup instead.
+	T* tryGet(Entity entity);
+	const T* tryGet(Entity entity) const;
+
 	// Get number of components
 	size_t size() const override { return m_components.size(); }
 
@@ -104,4 +112,16 @@ const T& ComponentPool<T>::get(Entity entity) const {
 		throw std::runtime_error("Entity does not have this component type!");
 	}
 	return m_components[it->second];
+}
+
+template <typename T>
+T* ComponentPool<T>::tryGet(Entity entity) {
+	auto it = m_entityToIndex.find(entity);
+	return it == m_entityToIndex.end() ? nullptr : &m_components[it->second];
+}
+
+template <typename T>
+const T* ComponentPool<T>::tryGet(Entity entity) const {
+	auto it = m_entityToIndex.find(entity);
+	return it == m_entityToIndex.end() ? nullptr : &m_components[it->second];
 }

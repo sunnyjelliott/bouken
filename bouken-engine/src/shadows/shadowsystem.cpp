@@ -136,22 +136,46 @@ void ShadowSystem::collectCasters(World& world,
 	    world.getComponentPool<MeshRenderer>();
 	if (!pool) return;
 
+	// Pool pointers resolved once, not per access. World::hasComponent and
+	// getComponent each locate the pool by type_index before touching it, so
+	// the four calls this loop used to make cost four typeid hashes on top of
+	// four entity hashes, per entity. Going through the pool directly - and
+	// through tryGet, which folds the has()+get() pair into one lookup -
+	// leaves one hash per component.
+	const ComponentPool<Transform>* transformPool =
+	    world.getComponentPool<Transform>();
+	const ComponentPool<BoundingBox>* boundsPool =
+	    world.getComponentPool<BoundingBox>();
+	if (!transformPool || !boundsPool) return;
+
 	const std::vector<Entity>& entities = pool->getEntities();
 	const std::vector<MeshRenderer>& renderers = pool->getComponents();
+
+	// One entry per submesh, so casters outnumber entities; the pool size is
+	// the floor, not the target, but it stops the first frames reallocating.
+	m_casters.reserve(entities.size());
 
 	for (size_t i = 0; i < entities.size(); i++) {
 		const Entity entity = entities[i];
 		const MeshRenderer& meshRenderer = renderers[i];
 
 		if (!meshRenderer.visible) continue;
-		if (!world.hasComponent<Transform>(entity)) continue;
-		if (!world.hasComponent<BoundingBox>(entity)) continue;
 
-		const AABB& bounds = world.getComponent<BoundingBox>(entity).world;
+		// Unlike World::hasComponent, this does not consult EntityManager for
+		// liveness - an entity is here because it is in the MeshRenderer pool.
+		// Nothing destroys entities yet; when something does, whatever removes
+		// the component has to remove it from every pool, or a dead entity
+		// keeps casting. TransformSystem::update already relies on the same.
+		const BoundingBox* boundingBox = boundsPool->tryGet(entity);
+		if (!boundingBox) continue;
+
+		const AABB& bounds = boundingBox->world;
 		if (!bounds.isValid()) continue;
 
-		const glm::mat4& worldMatrix =
-		    world.getComponent<Transform>(entity).worldMatrix;
+		const Transform* transform = transformPool->tryGet(entity);
+		if (!transform) continue;
+
+		const glm::mat4& worldMatrix = transform->worldMatrix;
 
 		for (uint32_t meshID : meshRenderer.getMeshIDs()) {
 			const RenderSystem::MeshInfo* mesh =
@@ -173,27 +197,65 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 
 	m_activeCasters.clear();
 
-	const glm::vec3 cameraPos =
-	    glm::vec3(glm::inverse(cameraSystem.getViewMatrix(world))[3]);
+	const glm::mat4 cameraView = cameraSystem.getViewMatrix(world);
+	const glm::vec3 cameraPos = glm::vec3(glm::inverse(cameraView)[3]);
+	const Frustum cameraFrustum = Frustum::fromViewProjection(
+	    cameraSystem.getProjectionMatrix(world, aspectRatio) * cameraView);
 
 	struct ScoredLight {
 		Entity entity;
 		float score;
+		bool isPoint;  // carried so the allocation loop needs no second lookup
 	};
 	std::vector<ScoredLight> candidates;
 
-	for (Entity entity : world.view<Transform, Light>()) {
-		const Light& light = world.getComponent<Light>(entity);
+	// Iterated through the Light pool rather than world.view<Transform,
+	// Light>(). View walks the whole 0..MAX_ENTITIES handle range with a hash
+	// lookup per component per step, so scoring nine lights cost 65,535
+	// iterations - a measured 0.49 ms/frame, independent of scene size.
+	// collectCasters above set the precedent.
+	//
+	// Order changes from ascending-handle to pool-insertion. Nothing here
+	// depends on it: the candidates are sorted by score immediately below.
+	const ComponentPool<Light>* lightPool = world.getComponentPool<Light>();
+	const ComponentPool<Transform>* lightTransforms =
+	    world.getComponentPool<Transform>();
+
+	const std::vector<Entity> emptyEntities;
+	const std::vector<Light> emptyLights;
+	const std::vector<Entity>& lightEntities =
+	    lightPool ? lightPool->getEntities() : emptyEntities;
+	const std::vector<Light>& lightComponents =
+	    lightPool ? lightPool->getComponents() : emptyLights;
+
+	candidates.reserve(lightEntities.size());
+
+	for (size_t li = 0; lightTransforms && li < lightEntities.size(); li++) {
+		const Entity entity = lightEntities[li];
+		const Light& light = lightComponents[li];
 		if (!light.castsShadow) continue;
 
 		if (light.type == LightType::Directional) continue;
 
-		const Transform& transform = world.getComponent<Transform>(entity);
+		// view<Transform, Light> used to guarantee the Transform; preserve it.
+		const Transform* transformPtr = lightTransforms->tryGet(entity);
+		if (!transformPtr) continue;
+		const Transform& transform = *transformPtr;
 		glm::vec3 lightPos = glm::vec3(transform.worldMatrix[3]);
+
+		// lighting.frag's point and spot attenuation is a hard zero at
+		// dist >= radius, so a light whose influence sphere misses the view
+		// frustum cannot light - and therefore cannot shadow - any visible
+		// pixel. Skipping it here leaves GPULight::castsShadow at 0, which is
+		// the already-supported unshadowed path, not a new state. Conservative
+		// for spots: their cone is strictly inside this sphere.
+		if (!cameraFrustum.intersects(lightPos, light.radius)) continue;
+
 		glm::vec3 diff = cameraPos - lightPos;
 		float distSq = glm::max(glm::dot(diff, diff), 0.01f);
 
-		candidates.push_back({entity, light.intensity / distSq});
+		candidates.push_back({entity, light.intensity / distSq,
+		                      light.type == LightType::Point});
 	}
 
 	std::sort(candidates.begin(), candidates.end(),
@@ -206,11 +268,13 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 	std::array<uint32_t, TIER_COUNT> tierNextSlot{};
 
 	for (const ScoredLight& candidate : candidates) {
-		const Light& light = world.getComponent<Light>(candidate.entity);
-		const bool isPoint = (light.type == LightType::Point);
+		const bool isPoint = candidate.isPoint;
 		const uint32_t tileCount = isPoint ? 2 : 1;
 
-		for (uint32_t tier = 0; tier < TIER_COUNT; tier++) {
+		// Point lights start below the top tiers - see DPSM_MIN_TIER.
+		const uint32_t firstTier = isPoint ? DPSM_MIN_TIER : 0;
+
+		for (uint32_t tier = firstTier; tier < TIER_COUNT; tier++) {
 			if (tierNextSlot[tier] + tileCount <= m_tiers[tier].slotCount) {
 				ShadowSlotAssignment assignment{};
 				assignment.entity = candidate.entity;
@@ -245,10 +309,13 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 
 		if (assignment.representation == ShadowRepresentation::DualParaboloid) {
 			const Transform& transform =
-			    world.getComponent<Transform>(assignment.entity);
-			const Light& light = world.getComponent<Light>(assignment.entity);
+			    *lightTransforms->tryGet(assignment.entity);
+			const Light& light = lightPool->get(assignment.entity);
 
 			assignment.dpsmView = computeDPSMViewMatrix(transform);
+			// Same translation dpsmView was built from - cached so render()
+			// doesn't have to invert the matrix back to recover it.
+			assignment.dpsmLightPos = glm::vec3(transform.worldMatrix[3]);
 			assignment.dpsmNear = POINT_SHADOW_NEAR;
 			assignment.dpsmFar = glm::max(light.radius, POINT_SHADOW_FAR_MIN);
 
@@ -262,9 +329,8 @@ void ShadowSystem::update(World& world, LightSystem& lightSystem,
 			continue;
 		}
 
-		const Transform& transform =
-		    world.getComponent<Transform>(assignment.entity);
-		const Light& light = world.getComponent<Light>(assignment.entity);
+		const Transform& transform = *lightTransforms->tryGet(assignment.entity);
+		const Light& light = lightPool->get(assignment.entity);
 		assignment.matrices = computeSpotLightSpaceMatrix(transform, light);
 		assignment.frustum =
 		    Frustum::fromViewProjection(assignment.matrices.viewProjection);
@@ -313,17 +379,39 @@ static void recordDPSMCaster(VkCommandBuffer cmd, VkPipelineLayout layout,
 	                 caster.firstVertex, 0);
 }
 
-// Single-plane test on the caster's bounds center against the point
-// light's view matrix - decision 4's accepted cheap version, no overlap
-// margin. tileIndex 0 = front (+Z in the corrected view convention above),
-// 1 = back. A caster straddling the plane gets fully assigned to one side;
-// the resulting boundary pop is deferred to "Shadows pt. 2."
+// Overlap test on the caster's whole bounds against the point light's
+// hemisphere plane. tileIndex 0 = front (+Z in the corrected view convention
+// above), 1 = back.
+//
+// Deliberately *not* an exclusive partition: a caster straddling the plane is
+// handed to both tiles, and depth_dpsm.vert's gl_ClipDistance cuts each
+// triangle at the plane so neither tile sees the other's half. Assigning a
+// straddler whole to one side - which the center test used to do - leaves the
+// other side with vertices past the paraboloid's pole, where the warp
+// diverges and the triangle smears across the entire tile.
 static bool casterInDPSMHemisphere(const glm::mat4& view, const AABB& bounds,
                                    uint32_t tileIndex) {
-	glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
-	float viewSpaceZ = (view * glm::vec4(center, 1.0f)).z;
-	bool front = viewSpaceZ >= 0.0f;
-	return tileIndex == 0 ? front : !front;
+	const glm::vec3 center = (bounds.min + bounds.max) * 0.5f;
+	const glm::vec3 extent = (bounds.max - bounds.min) * 0.5f;
+
+	// Third row of the view rotation - the world-space axis view-space z
+	// measures along. Projecting the extent onto its absolute value gives the
+	// bounds' half-width in z without transforming all eight corners.
+	const glm::vec3 zAxis(view[0][2], view[1][2], view[2][2]);
+	const float centerZ = (view * glm::vec4(center, 1.0f)).z;
+	const float halfWidthZ = glm::dot(extent, glm::abs(zAxis));
+
+	return tileIndex == 0 ? (centerZ + halfWidthZ >= 0.0f)
+	                      : (centerZ - halfWidthZ <= 0.0f);
+}
+
+// An occluder farther from the light than its radius can only ever shadow
+// receivers that are themselves out of range, so dropping it costs nothing -
+// and it pays for the straddlers the test above now draws twice.
+static bool casterWithinDPSMRange(const glm::vec3& lightPos,
+                                  const AABB& bounds, float farPlane) {
+	const glm::vec3 closest = glm::clamp(lightPos, bounds.min, bounds.max);
+	return glm::distance(lightPos, closest) <= farPlane;
 }
 
 void ShadowSystem::render(VkCommandBuffer commandBuffer,
@@ -446,6 +534,10 @@ void ShadowSystem::render(VkCommandBuffer commandBuffer,
 					for (const ShadowCaster& caster : m_casters) {
 						if (!casterInDPSMHemisphere(assignment.dpsmView,
 						                            caster.bounds, hemisphere))
+							continue;
+						if (!casterWithinDPSMRange(assignment.dpsmLightPos,
+						                           caster.bounds,
+						                           assignment.dpsmFar))
 							continue;
 
 						recordDPSMCaster(commandBuffer, m_dpsmPipelineLayout,

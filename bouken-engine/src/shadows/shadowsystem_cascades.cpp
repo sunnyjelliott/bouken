@@ -303,11 +303,34 @@ LightSpaceMatrices ShadowSystem::computeCascadeViewProjection(
 void ShadowSystem::updateCascades(World& world,
                                   const CameraSystem& cameraSystem,
                                   float aspectRatio) {
+	// Light pool rather than world.view<Transform, Light>(), matching
+	// ShadowSystem::update. This walk was already cheap - it breaks on the
+	// first match and the sun is spawned first - but only by accident of
+	// spawn order; reordering initScene would have made it a full
+	// 65,535-handle scan. "First" now means first inserted rather than
+	// lowest handle, which picks the same light here and is equally arbitrary
+	// either way: only one directional caster is supported.
+	//
+	// The Transform check is load-bearing, not incidental - the fit below
+	// calls getComponent<Transform>(m_directionalCaster), which throws rather
+	// than returning null if the light has none.
 	m_directionalCaster = NULL_ENTITY;
-	for (Entity entity : world.view<Transform, Light>()) {
-		const Light& light = world.getComponent<Light>(entity);
-		if (light.type == LightType::Directional && light.castsShadow) {
-			m_directionalCaster = entity;
+
+	const ComponentPool<Light>* lightPool = world.getComponentPool<Light>();
+	const ComponentPool<Transform>* transformPool =
+	    world.getComponentPool<Transform>();
+
+	if (lightPool && transformPool) {
+		const std::vector<Entity>& lightEntities = lightPool->getEntities();
+		const std::vector<Light>& lightComponents = lightPool->getComponents();
+
+		for (size_t i = 0; i < lightEntities.size(); i++) {
+			const Light& light = lightComponents[i];
+			if (light.type != LightType::Directional || !light.castsShadow)
+				continue;
+			if (!transformPool->tryGet(lightEntities[i])) continue;
+
+			m_directionalCaster = lightEntities[i];
 			break;
 		}
 	}

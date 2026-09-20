@@ -159,6 +159,8 @@ void VulkanContext::createLogicalDevice() {
 	// Specify device features we want to use
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	// depth_dpsm.vert clips each triangle at the paraboloid's hemisphere plane.
+	deviceFeatures.shaderClipDistance = VK_TRUE;
 
 	// Create logical device
 	VkDeviceCreateInfo createInfo{};
